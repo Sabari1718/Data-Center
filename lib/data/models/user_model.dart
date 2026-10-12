@@ -1,5 +1,7 @@
 class UserModel {
   final String id;
+  final String? userMainId;
+  final String? username;
   final String name;
   final String email;
   final String? avatarUrl;
@@ -12,6 +14,8 @@ class UserModel {
 
   const UserModel({
     required this.id,
+    this.userMainId,
+    this.username,
     required this.name,
     required this.email,
     this.avatarUrl,
@@ -24,11 +28,15 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'] ?? json['user_main_id'] ?? '';
+    final rawName = json['name'] as String? ?? json['username'] as String? ?? '';
     return UserModel(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
+      id: rawId.toString(),
+      userMainId: json['user_main_id']?.toString(),
+      username: json['username'] as String?,
+      name: rawName.isNotEmpty ? rawName : 'User',
       email: json['email'] as String? ?? '',
-      avatarUrl: json['avatarUrl'] as String?,
+      avatarUrl: json['avatarUrl'] as String? ?? json['avatar_url'] as String?,
       role: json['role'] as String? ?? 'Infrastructure Admin',
       company: json['company'] as String? ?? 'DataCenter Global Corp',
       department: json['department'] as String? ?? 'Cloud Operations',
@@ -45,6 +53,8 @@ class UserModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'user_main_id': userMainId,
+      'username': username,
       'name': name,
       'email': email,
       'avatarUrl': avatarUrl,
@@ -59,6 +69,8 @@ class UserModel {
 
   UserModel copyWith({
     String? id,
+    String? userMainId,
+    String? username,
     String? name,
     String? email,
     String? avatarUrl,
@@ -71,6 +83,8 @@ class UserModel {
   }) {
     return UserModel(
       id: id ?? this.id,
+      userMainId: userMainId ?? this.userMainId,
+      username: username ?? this.username,
       name: name ?? this.name,
       email: email ?? this.email,
       avatarUrl: avatarUrl ?? this.avatarUrl,

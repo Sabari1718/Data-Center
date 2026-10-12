@@ -35,6 +35,7 @@ class DataCenterController extends Notifier<DataCenterState> {
   @override
   DataCenterState build() {
     final repo = ref.watch(dataCenterRepositoryProvider);
+    Future.microtask(() => _loadDataCenters());
     return DataCenterState(
       dataCenters: AsyncValue.data(repo.currentDataCenters),
     );
@@ -73,6 +74,11 @@ class DataCenterController extends Notifier<DataCenterState> {
     final repo = ref.read(dataCenterRepositoryProvider);
     await repo.updateDataCenter(dc);
     await _loadDataCenters();
+  }
+
+  Future<ResolvedLocationModel?> lookupPincode(String pincode) async {
+    final repo = ref.read(dataCenterRepositoryProvider);
+    return await repo.lookupPincode(pincode);
   }
 
   Future<void> refresh() async {

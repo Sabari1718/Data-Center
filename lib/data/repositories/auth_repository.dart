@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/constants/api_endpoints.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/errors/app_failure.dart';
 import '../../core/network/api_client.dart';
@@ -34,27 +35,62 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    // Artificial latency for realistic feel
-    await Future.delayed(const Duration(milliseconds: 700));
-
-    // When backend API endpoints are ready, replace with:
-    // final response = await apiClient.post(ApiEndpoints.login, data: {'email': email, 'password': password});
-    // final token = response.data['token'];
-
-    if (email.trim().toLowerCase() == 'invalid@datacenter.io') {
-      throw const AuthFailure('Invalid email or password. Please try again.');
-    }
-
-    // Mock successful authentication
-    const fakeToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.datacenter_mock_jwt_token_2026';
-    await secureStorage.saveToken(fakeToken);
-
-    final user = MockDataStore.defaultUser.copyWith(
-      email: email,
-      name: email.contains('@') ? email.split('@').first.replaceFirstMapped(RegExp(r'^\w'), (m) => m[0]!.toUpperCase()) : 'Johit',
-      lastLoginAt: DateTime.now(),
+    final response = await apiClient.post(
+      ApiEndpoints.login,
+      data: {
+        'email': email.trim(),
+        'password': password,
+      },
     );
 
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const AuthFailure('Invalid response format received from server.');
+    }
+
+    // Check backend explicit failure message
+    if (data['result'] != null &&
+        data['result'].toString().toLowerCase() == 'failure') {
+      final msg = data['message'] ?? 'Login failed. Please verify your credentials.';
+      throw AuthFailure(msg.toString());
+    }
+
+    final token = (data['token'] ??
+            data['accessToken'] ??
+            data['access_token'] ??
+            (data['data'] is Map ? data['data']['token'] : null)) as String?;
+
+    if (token == null || token.isEmpty) {
+      final msg = data['message'] ?? 'Login failed. No authentication token received.';
+      throw AuthFailure(msg.toString());
+    }
+
+    // Save token to secure storage
+    await secureStorage.saveToken(token);
+
+    // Save optional refresh token if provided
+    final refreshToken = data['refreshToken'] ?? data['refresh_token'];
+    if (refreshToken != null && refreshToken.toString().isNotEmpty) {
+      await secureStorage.saveRefreshToken(refreshToken.toString());
+    }
+
+    // Parse user object from response
+    final userJson = data['user'] ?? (data['data'] is Map ? data['data']['user'] : null);
+    UserModel user;
+    if (userJson is Map<String, dynamic>) {
+      user = UserModel.fromJson(userJson).copyWith(
+        lastLoginAt: DateTime.now(),
+      );
+    } else {
+      user = UserModel(
+        id: (data['id'] ?? '1').toString(),
+        name: data['name'] ?? email.split('@').first,
+        email: email,
+        lastLoginAt: DateTime.now(),
+      );
+    }
+
+    // Persist user data in preferences
     await preferences.setString(AppConstants.userDataKey, jsonEncode(user.toJson()));
     return user;
   }

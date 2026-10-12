@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/errors/app_failure.dart';
+import '../../../core/network/api_exceptions.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../domain/auth_state.dart';
@@ -32,8 +34,14 @@ class AuthController extends Notifier<AuthState> {
       final user = await repo.login(email: email, password: password);
       state = AuthState.authenticated(user);
       return true;
+    } on ApiException catch (e) {
+      state = AuthState.error(e.message);
+      return false;
+    } on AppFailure catch (e) {
+      state = AuthState.error(e.message);
+      return false;
     } catch (e) {
-      state = AuthState.error(e.toString());
+      state = AuthState.error(e.toString().replaceAll('Exception: ', ''));
       return false;
     }
   }

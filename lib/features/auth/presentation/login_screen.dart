@@ -21,8 +21,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(text: 'johit@datacenter.io');
-  final _passwordController = TextEditingController(text: 'Password123!');
+  final _emailController = TextEditingController(text: 'yudeshprasath@gmail.com');
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
@@ -198,7 +198,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                'Quick Demo Access',
+                                'Live Server Connected',
                                 style: AppTextStyles.labelSmall(isDark).copyWith(
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -207,7 +207,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Pre-filled with test credentials. Click "Sign In" to explore the live dashboard.',
+                            'Connected to datacenter.jobes24x7.com/api. Enter your password to sign in.',
                             style: AppTextStyles.bodySmall(isDark).copyWith(
                               fontSize: 11,
                             ),

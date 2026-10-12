@@ -3,14 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../../data/models/data_center_model.dart';
+import '../../../data/models/server_model.dart';
 import '../../../shared/extensions/context_extensions.dart';
-import '../../../shared/widgets/status_badge.dart';
 import '../../../shared/widgets/sub_tab_bar.dart';
+import '../../servers/presentation/server_controller.dart';
 import 'data_center_controller.dart';
 
 class DataCenterScreen extends ConsumerStatefulWidget {
@@ -46,34 +46,59 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
   // Form state for Add Data Center
   final _dcNameController = TextEditingController();
   final _pinController = TextEditingController();
-  final _countryController = TextEditingController(text: 'United States');
+  final _countryController = TextEditingController(text: 'India');
   final _zipController = TextEditingController();
   final _latController = TextEditingController();
   final _longController = TextEditingController();
 
   String _locationMethod = 'Use PIN';
   bool _isActiveStatus = true;
+  ResolvedLocationModel? _resolvedLocation;
+  bool _isSearchingPin = false;
+  bool _isSavingDc = false;
+  String? _editingDcId;
 
   // Dynamic form state for other tabs
-  List<int> _softwareStacks = [1];
+  bool _isSavingPowerCooling = false;
+  bool _isSavingNetwork = false;
+  bool _isSavingTab = false;
+
+  final List<int> _softwareStacks = [1];
   int _softwareIdCounter = 2;
 
-  List<int> _powerConfigs = [1];
+  final List<int> _powerConfigs = [1];
   int _powerIdCounter = 2;
+  final Map<int, TextEditingController> _powerUpsControllers = {};
+  final Map<int, TextEditingController> _powerConsumptionControllers = {};
+  final Map<int, TextEditingController> _powerGeneratorControllers = {};
+  final Map<int, TextEditingController> _powerCoolingTypeControllers = {};
+  final Map<int, TextEditingController> _powerTempControllers = {};
+  final Map<int, TextEditingController> _powerPduControllers = {};
 
-  List<int> _storageArrays = [1];
+  final List<int> _storageArrays = [1];
   int _storageIdCounter = 2;
 
-  List<int> _securityProfiles = [1];
+  final List<int> _securityProfiles = [1];
   int _securityIdCounter = 2;
 
-  List<int> _rackSetups = [1];
+  final List<int> _rackSetups = [1];
   int _rackIdCounter = 2;
 
-  List<int> _networkConnections = [1];
+  final List<int> _networkConnections = [1];
   int _networkIdCounter = 2;
-  Map<int, List<int>> _networkIps = {1: [1]};
-  Map<int, int> _networkIpCounters = {1: 2};
+  final Map<int, List<int>> _networkIps = {1: [1]};
+  final Map<int, int> _networkIpCounters = {1: 2};
+  final Map<int, TextEditingController> _networkNameControllers = {};
+  final Map<int, TextEditingController> _networkBandwidthControllers = {};
+  final Map<String, TextEditingController> _networkIpControllers = {};
+
+  TextEditingController _getController(Map<int, TextEditingController> map, int id, [String? initialText]) {
+    return map.putIfAbsent(id, () => TextEditingController(text: initialText ?? ''));
+  }
+
+  TextEditingController _getIpController(String key, [String? initialText]) {
+    return _networkIpControllers.putIfAbsent(key, () => TextEditingController(text: initialText ?? ''));
+  }
 
   final Map<String, bool> _toggles = {};
   bool _getToggle(String key) => _toggles[key] ?? false;
@@ -93,6 +118,33 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
     _zipController.dispose();
     _latController.dispose();
     _longController.dispose();
+    for (var c in _powerUpsControllers.values) {
+      c.dispose();
+    }
+    for (var c in _powerConsumptionControllers.values) {
+      c.dispose();
+    }
+    for (var c in _powerGeneratorControllers.values) {
+      c.dispose();
+    }
+    for (var c in _powerCoolingTypeControllers.values) {
+      c.dispose();
+    }
+    for (var c in _powerTempControllers.values) {
+      c.dispose();
+    }
+    for (var c in _powerPduControllers.values) {
+      c.dispose();
+    }
+    for (var c in _networkNameControllers.values) {
+      c.dispose();
+    }
+    for (var c in _networkBandwidthControllers.values) {
+      c.dispose();
+    }
+    for (var c in _networkIpControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -100,6 +152,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
   Widget build(BuildContext context) {
     final isDark = context.isDark;
     final state = ref.watch(dataCenterControllerProvider);
+    final serverState = ref.watch(serverControllerProvider);
     final isDesktop = MediaQuery.of(context).size.width >= 850;
 
     return Scaffold(
@@ -131,11 +184,11 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
 
                         // Main Content Area
                         Expanded(
-                          child: _buildTabContent(context, state, isDark),
+                          child: _buildTabContent(context, state, serverState, isDark),
                         ),
                       ],
                     )
-                  : _buildTabContent(context, state, isDark),
+                  : _buildTabContent(context, state, serverState, isDark),
             ),
           ],
         ),
@@ -481,23 +534,24 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
   Widget _buildTabContent(
     BuildContext context,
     DataCenterState state,
+    ServerState serverState,
     bool isDark,
   ) {
     switch (_selectedTabIndex) {
       case 0:
         return _buildAddDataCenterTab(context, state, isDark);
       case 1:
-        return _buildSoftwareTab(context, isDark);
+        return _buildSoftwareTab(context, state, serverState, isDark);
       case 2:
-        return _buildPowerCoolingTab(context, isDark);
+        return _buildPowerCoolingTab(context, state, serverState, isDark);
       case 3:
-        return _buildStorageTab(context, isDark);
+        return _buildStorageTab(context, state, serverState, isDark);
       case 4:
-        return _buildSecurityTab(context, isDark);
+        return _buildSecurityTab(context, state, serverState, isDark);
       case 5:
-        return _buildRackManagementTab(context, isDark);
+        return _buildRackManagementTab(context, state, serverState, isDark);
       case 6:
-        return _buildNetworkTab(context, isDark);
+        return _buildNetworkTab(context, state, serverState, isDark);
       default:
         return const SizedBox.shrink();
     }
@@ -669,6 +723,9 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
 
                   // Dynamic Location Input Fields based on Selected Method
                   _buildDynamicLocationInputs(isDark),
+
+                  if (_resolvedLocation != null && _locationMethod == 'Use PIN')
+                    _buildResolvedLocationCard(isDark),
                 ],
               ),
 
@@ -735,12 +792,22 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                   color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
                 ),
               ),
-              child: Text(
-                '${state.dataCenters.value?.length ?? 1} Location',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+              child: state.dataCenters.maybeWhen(
+                data: (list) => Text(
+                  '${list.length} ${list.length == 1 ? "Location" : "Locations"}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                    color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                  ),
+                ),
+                orElse: () => Text(
+                  '0 Locations',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                    color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),
@@ -748,230 +815,593 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
         ),
         const SizedBox(height: 14),
 
-        // Configured Circuit Point Card
-        state.dataCenters.maybeWhen(
+        // Configured Data Center Cards
+        state.dataCenters.when(
           data: (list) {
-            final dc = list.isNotEmpty
-                ? list.first
-                : const DataCenterModel(
-                    id: 'dc-circuit-point',
-                    name: 'Circuit Point',
-                    code: 'IN-SOUTH-1',
-                    city: 'Coimbatore',
-                    country: 'India',
-                    region: 'Asia Pacific',
-                    address: 'Circuit Point Tech Park, PIN: 641062',
-                    status: 'active',
-                    healthScore: 99.98,
-                    totalServers: 24,
-                    activeServers: 24,
-                    totalRacks: 6,
-                    powerCapacityKva: 1200.0,
-                    coolingEfficiencyPue: 1.14,
-                    ipPrefix: '198.51.100.0/24',
-                  );
-            return _buildCircuitPointCard(context, dc, isDark);
+            if (list.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(24),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.cardDark : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                child: Text(
+                  'No configured data centers found.',
+                  style: TextStyle(
+                    color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                    fontSize: 13,
+                  ),
+                ),
+              );
+            }
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: list.map((dc) => _buildCircuitPointCard(context, dc, isDark)).toList(),
+            );
           },
-          orElse: () => _buildCircuitPointCard(
-            context,
-            const DataCenterModel(
-              id: 'dc-circuit-point',
-              name: 'Circuit Point',
-              code: 'IN-SOUTH-1',
-              city: 'Coimbatore',
-              country: 'India',
-              region: 'Asia Pacific',
-              address: 'Circuit Point Tech Park, PIN: 641062',
-              status: 'active',
-              healthScore: 99.98,
-              totalServers: 24,
-              activeServers: 24,
-              totalRacks: 6,
-              powerCapacityKva: 1200.0,
-              coolingEfficiencyPue: 1.14,
-              ipPrefix: '198.51.100.0/24',
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
             ),
-            isDark,
+          ),
+          error: (err, _) => Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Failed to load data centers: $err',
+              style: const TextStyle(color: Colors.red, fontSize: 13),
+            ),
           ),
         ),
 
         const SizedBox(height: 24),
 
         // Bottom Action Bar: Discard / Save Configuration
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isNarrow = constraints.maxWidth < 500;
-            if (isNarrow) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Last saved: Just now',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            _dcNameController.clear();
-                            _pinController.clear();
-                            _zipController.clear();
-                            _latController.clear();
-                            _longController.clear();
-                            context.showSnackBar('Changes discarded');
-                          },
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            side: BorderSide(
-                              color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          child: Text(
-                            'Discard Changes',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : const Color(0xFF0F172A),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            final name = _dcNameController.text.trim().isEmpty
-                                ? 'Circuit Point Alpha'
-                                : _dcNameController.text.trim();
-                            final newDc = DataCenterModel(
-                              id: 'dc-${DateTime.now().millisecondsSinceEpoch}',
-                              name: name,
-                              code: 'DC-${DateTime.now().millisecond}',
-                              city: 'Coimbatore',
-                              country: 'India',
-                              region: 'Asia Pacific',
-                              address: 'Circuit Point Tech Park',
-                              status: _isActiveStatus ? 'active' : 'maintenance',
-                              healthScore: 99.98,
-                              totalServers: 24,
-                              activeServers: 24,
-                              totalRacks: 6,
-                              powerCapacityKva: 1200.0,
-                              coolingEfficiencyPue: 1.14,
-                              ipPrefix: '198.51.100.0/24',
-                            );
-                            ref.read(dataCenterControllerProvider.notifier).addDataCenter(newDc);
-                            context.showSnackBar('Configuration for "$name" saved successfully');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF4F46E5),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            'Save Configuration',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            }
-
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Last saved: Just now',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
-                  ),
-                ),
-                Row(
-                  children: [
-                    OutlinedButton(
-                      onPressed: () {
-                        _dcNameController.clear();
-                        _pinController.clear();
-                        _zipController.clear();
-                        _latController.clear();
-                        _longController.clear();
-                        context.showSnackBar('Changes discarded');
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        side: BorderSide(
-                          color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
-                        ),
-                      ),
-                      child: Text(
-                        'Discard Changes',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white : const Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: () {
-                        final name = _dcNameController.text.trim().isEmpty
-                            ? 'Circuit Point Alpha'
-                            : _dcNameController.text.trim();
-                        final newDc = DataCenterModel(
-                          id: 'dc-${DateTime.now().millisecondsSinceEpoch}',
-                          name: name,
-                          code: 'DC-${DateTime.now().millisecond}',
-                          city: 'Coimbatore',
-                          country: 'India',
-                          region: 'Asia Pacific',
-                          address: 'Circuit Point Tech Park',
-                          status: _isActiveStatus ? 'active' : 'maintenance',
-                          healthScore: 99.98,
-                          totalServers: 24,
-                          activeServers: 24,
-                          totalRacks: 6,
-                          powerCapacityKva: 1200.0,
-                          coolingEfficiencyPue: 1.14,
-                          ipPrefix: '198.51.100.0/24',
-                        );
-                        ref.read(dataCenterControllerProvider.notifier).addDataCenter(newDc);
-                        context.showSnackBar('Configuration for "$name" saved successfully');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4F46E5),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Save Configuration',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
+        _buildBottomActionBar(isDark),
         const SizedBox(height: 24),
       ],
     );
+  }
+
+  Widget _buildResolvedLocationCard(bool isDark) {
+    if (_resolvedLocation == null) return const SizedBox.shrink();
+    final loc = _resolvedLocation!;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF1E1B4B).withValues(alpha: 0.3)
+            : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? const Color(0xFF4338CA) : const Color(0xFFC7D2FE),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'RESOLVED LOCATION DETAILS',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: Color(0xFF4F46E5),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${loc.cityName.isNotEmpty ? loc.cityName : loc.talukName}, ${loc.talukName.isNotEmpty ? loc.talukName : loc.cityName}',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : const Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${loc.districtName}, ${loc.stateName}',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${loc.countryName} - ${loc.pincode}',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActionBar(
+    bool isDark, {
+    VoidCallback? onSave,
+    VoidCallback? onDiscard,
+    String? subtitle,
+    bool isLoading = false,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 500;
+        final discardButton = OutlinedButton(
+          onPressed: onDiscard ?? _handleDiscardChanges,
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            side: BorderSide(
+              color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Text(
+            'Discard Changes',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+        );
+
+        final isSaving = isLoading || _isSavingDc;
+        final saveButton = ElevatedButton(
+          onPressed: isSaving ? null : (onSave ?? _handleSaveConfiguration),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF4F46E5),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            elevation: 0,
+          ),
+          child: isSaving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text(
+                  'Save Configuration',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+        );
+
+        final labelText = subtitle ?? 'Last saved: Just now';
+
+        if (isNarrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                labelText,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: discardButton),
+                  const SizedBox(width: 10),
+                  Expanded(child: saveButton),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              labelText,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+              ),
+            ),
+            Row(
+              children: [
+                discardButton,
+                const SizedBox(width: 12),
+                saveButton,
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _handleSaveConfiguration() async {
+    final name = _dcNameController.text.trim().isEmpty
+        ? 'Data Center'
+        : _dcNameController.text.trim();
+    final pin = _pinController.text.trim();
+    final zip = _zipController.text.trim();
+    final lat = _latController.text.trim();
+    final lng = _longController.text.trim();
+    final country = _countryController.text.trim().isEmpty ? 'India' : _countryController.text.trim();
+
+    String method = 'pincode';
+    if (_locationMethod == 'Use ZIP Code') method = 'zip';
+    if (_locationMethod == 'Use Latitude & Longitude') method = 'lat_long';
+
+    setState(() => _isSavingDc = true);
+    try {
+      if (_editingDcId != null) {
+        final updatedDc = DataCenterModel(
+          id: _editingDcId!,
+          name: name,
+          code: 'DC-$_editingDcId',
+          city: _resolvedLocation?.cityName ?? (_resolvedLocation?.districtName ?? ''),
+          country: country,
+          region: 'Asia Pacific',
+          address: _resolvedLocation != null
+              ? '${_resolvedLocation!.talukName}, ${_resolvedLocation!.districtName}'
+              : 'Pincode $pin',
+          status: _isActiveStatus ? 'active' : 'maintenance',
+          healthScore: 99.98,
+          totalServers: 24,
+          activeServers: 24,
+          totalRacks: 6,
+          powerCapacityKva: 1200.0,
+          coolingEfficiencyPue: 1.14,
+          ipPrefix: '198.51.100.0/24',
+          locationMethod: method,
+          pincode: pin,
+          zipCode: zip,
+          latitude: lat,
+          longitude: lng,
+          activeStatus: _isActiveStatus ? 1 : 0,
+        );
+        await ref.read(dataCenterControllerProvider.notifier).updateDataCenter(updatedDc);
+        if (mounted) {
+          context.showSnackBar('Data Center "$name" updated successfully');
+          setState(() {
+            _editingDcId = null;
+          });
+        }
+      } else {
+        final newDc = DataCenterModel(
+          id: '',
+          name: name,
+          code: 'DC-${DateTime.now().millisecondsSinceEpoch}',
+          city: _resolvedLocation?.cityName ?? (_resolvedLocation?.districtName ?? ''),
+          country: country,
+          region: 'Asia Pacific',
+          address: _resolvedLocation != null
+              ? '${_resolvedLocation!.talukName}, ${_resolvedLocation!.districtName}'
+              : 'Pincode $pin',
+          status: _isActiveStatus ? 'active' : 'maintenance',
+          healthScore: 99.98,
+          totalServers: 24,
+          activeServers: 24,
+          totalRacks: 6,
+          powerCapacityKva: 1200.0,
+          coolingEfficiencyPue: 1.14,
+          ipPrefix: '198.51.100.0/24',
+          locationMethod: method,
+          pincode: pin,
+          zipCode: zip,
+          latitude: lat,
+          longitude: lng,
+          activeStatus: _isActiveStatus ? 1 : 0,
+        );
+        await ref.read(dataCenterControllerProvider.notifier).addDataCenter(newDc);
+        if (mounted) {
+          context.showSnackBar('Data Center "$name" created successfully');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Error saving data center: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingDc = false);
+      }
+    }
+  }
+
+  void _handleDiscardChanges() {
+    setState(() {
+      _editingDcId = null;
+      _dcNameController.clear();
+      _pinController.clear();
+      _zipController.clear();
+      _latController.clear();
+      _longController.clear();
+      _countryController.text = 'India';
+      _resolvedLocation = null;
+      _isActiveStatus = true;
+    });
+    context.showSnackBar('Changes discarded');
+  }
+
+  Future<void> _handleSearchLocation({String? pincodeToSearch}) async {
+    if (_locationMethod != 'Use PIN') {
+      if (_locationMethod == 'Use ZIP Code') {
+        final zip = _zipController.text.trim();
+        context.showSnackBar(
+          'Location coordinates resolved for ZIP: ${zip.isEmpty ? "10001" : zip}, ${_countryController.text}',
+        );
+      } else {
+        final lat = _latController.text.trim();
+        final lng = _longController.text.trim();
+        context.showSnackBar(
+          'Geographic coordinates mapped: ${lat.isEmpty ? "38.8951" : lat}, ${lng.isEmpty ? "-77.0364" : lng}',
+        );
+      }
+      return;
+    }
+
+    final pin = (pincodeToSearch ?? _pinController.text).trim();
+    if (pin.isEmpty) {
+      context.showSnackBar('Please enter a PIN code');
+      return;
+    }
+
+    setState(() {
+      _isSearchingPin = true;
+    });
+
+    try {
+      final location = await ref
+          .read(dataCenterControllerProvider.notifier)
+          .lookupPincode(pin);
+
+      if (mounted) {
+        if (location != null) {
+          setState(() {
+            _resolvedLocation = location;
+            if (_countryController.text.trim().isEmpty) {
+              _countryController.text = location.countryName;
+            }
+          });
+          context.showSnackBar('Location resolved for PIN: $pin');
+        } else {
+          context.showSnackBar('No location details found for PIN: $pin');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Error resolving PIN: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSearchingPin = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleSavePowerCooling(
+    List<DataCenterModel> dcList,
+    List<ServerModel> serverList,
+  ) async {
+    setState(() => _isSavingPowerCooling = true);
+    try {
+      for (final id in _powerConfigs) {
+        final dcName = _getDropdown('power_${id}_dc', 'Select Data Center...');
+        final srvName = _getDropdown('power_${id}_srv', 'Select Server...');
+        final dc = dcList.firstWhere(
+          (d) => d.name == dcName,
+          orElse: () => dcList.isNotEmpty
+              ? dcList.first
+              : const DataCenterModel(
+                  id: '1',
+                  name: 'Data Center',
+                  code: 'DC-1',
+                  city: 'Coimbatore',
+                  country: 'India',
+                  region: 'Asia Pacific',
+                  address: 'Data Center Node',
+                  status: 'active',
+                  healthScore: 100,
+                  totalServers: 0,
+                  activeServers: 0,
+                  totalRacks: 0,
+                  powerCapacityKva: 0,
+                  coolingEfficiencyPue: 0,
+                  ipPrefix: '',
+                  locationMethod: 'pincode',
+                ),
+        );
+        final ups = _powerUpsControllers[id]?.text.trim() ?? '30 kVA';
+        final cons = _powerConsumptionControllers[id]?.text.trim() ?? '3200';
+        final gen = _powerGeneratorControllers[id]?.text.trim() ?? 'Diesel 50kVA';
+        final cool = _powerCoolingTypeControllers[id]?.text.trim() ?? 'In-Row Liquid Chilled';
+        final temp = _powerTempControllers[id]?.text.trim() ?? '21';
+        final pdu = _powerPduControllers[id]?.text.trim() ?? 'APC Metered PDU 32A';
+        final red = _getToggle('power_${id}_red');
+
+        final model = ServerModel(
+          id: '',
+          name: srvName != 'Select Server...' ? srvName : 'Node-Power-$id',
+          hostname: srvName != 'Select Server...' ? srvName : 'node-$id.datacenter.internal',
+          ipAddress: '10.0.1.$id',
+          ipv6Address: 'fe80::$id',
+          dataCenterId: dc.id.isNotEmpty ? dc.id : '1',
+          dataCenterName: dc.name,
+          location: dc.city.isNotEmpty ? dc.city : dc.name,
+          status: 'Active',
+          serverType: 'Rack Server',
+          os: 'Ubuntu 22.04 LTS',
+          cpuUsagePercent: 42.0,
+          cpuCores: 16,
+          threadCount: 32,
+          cpuModel: 'E5-2680 v4',
+          ramUsagePercent: 35.0,
+          ramTotalGb: 64.0,
+          ramUsedGb: 22.4,
+          storageUsagePercent: 50.0,
+          storageTotalGb: 1000.0,
+          storageUsedGb: 500.0,
+          networkUsageMbps: 120.0,
+          networkInMbps: 60.0,
+          networkOutMbps: 60.0,
+          uptimeSeconds: 86400,
+          healthStatus: 'healthy',
+          upsCapacity: ups,
+          powerConsumption: cons,
+          generatorBackup: gen,
+          coolingType: cool,
+          rackTemperature: temp,
+          pduDetails: pdu,
+          hasRedundancy: red,
+        );
+
+        await ref.read(serverControllerProvider.notifier).addServer(model);
+      }
+      if (mounted) {
+        context.showSnackBar('Power & Cooling configuration saved successfully to backend!');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Error saving power & cooling configuration: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingPowerCooling = false);
+      }
+    }
+  }
+
+  Future<void> _handleSaveNetwork(
+    List<DataCenterModel> dcList,
+    List<ServerModel> serverList,
+  ) async {
+    setState(() => _isSavingNetwork = true);
+    try {
+      for (final id in _networkConnections) {
+        final dcName = _getDropdown('net_${id}_dc', 'Select Data Center...');
+        final srvName = _getDropdown('net_${id}_srv', 'Select Server...');
+        final provider = _getDropdown('net_${id}_prov', 'Tata Communications');
+        final netName = _networkNameControllers[id]?.text.trim() ?? 'Primary Fiber Backbone';
+        final connType = _getDropdown('net_${id}_type', 'Fiber');
+        final bw = _networkBandwidthControllers[id]?.text.trim() ?? '1 Gbps';
+
+        final dc = dcList.firstWhere(
+          (d) => d.name == dcName,
+          orElse: () => dcList.isNotEmpty
+              ? dcList.first
+              : const DataCenterModel(
+                  id: '1',
+                  name: 'Data Center',
+                  code: 'DC-1',
+                  city: 'Coimbatore',
+                  country: 'India',
+                  region: 'Asia Pacific',
+                  address: 'Data Center Node',
+                  status: 'active',
+                  healthScore: 100,
+                  totalServers: 0,
+                  activeServers: 0,
+                  totalRacks: 0,
+                  powerCapacityKva: 0,
+                  coolingEfficiencyPue: 0,
+                  ipPrefix: '',
+                  locationMethod: 'pincode',
+                ),
+        );
+        final srv = serverList.firstWhere(
+          (s) => s.name == srvName,
+          orElse: () => serverList.isNotEmpty
+              ? serverList.first
+              : ServerModel(
+                  id: '1',
+                  name: 'Server',
+                  hostname: 'server',
+                  ipAddress: '10.0.0.1',
+                  ipv6Address: '',
+                  dataCenterId: dc.id,
+                  dataCenterName: dc.name,
+                  location: '',
+                  status: 'Active',
+                  os: '',
+                  cpuUsagePercent: 0,
+                  cpuCores: 4,
+                  cpuModel: '',
+                  ramUsagePercent: 0,
+                  ramTotalGb: 0,
+                  ramUsedGb: 0,
+                  storageUsagePercent: 0,
+                  storageTotalGb: 0,
+                  storageUsedGb: 0,
+                  networkUsageMbps: 0,
+                  networkInMbps: 0,
+                  networkOutMbps: 0,
+                  uptimeSeconds: 0,
+                  healthStatus: 'healthy',
+                ),
+        );
+
+        final ipsList = <Map<String, String>>[];
+        final ipIds = _networkIps[id] ?? [1];
+        for (final ipId in ipIds) {
+          final v4 = _networkIpControllers['ipv4_${id}_$ipId']?.text.trim() ?? '192.168.1.1';
+          final v6 = _networkIpControllers['ipv6_${id}_$ipId']?.text.trim() ?? '2001:0db8::1';
+          ipsList.add({'ipv4': v4, 'ipv6': v6});
+        }
+
+        final model = ServerNetworkConnectionModel(
+          id: '',
+          dataCenterId: dc.id.isNotEmpty ? dc.id : null,
+          dataCenterName: dc.name,
+          serverId: srv.id.isNotEmpty ? srv.id : null,
+          serverName: srv.name,
+          networkProvider: provider,
+          networkName: netName,
+          connectionType: connType,
+          bandwidth: bw,
+          ips: ipsList,
+        );
+
+        await ref.read(serverControllerProvider.notifier).saveNetworkConnection(model);
+      }
+      if (mounted) {
+        context.showSnackBar('Network configuration saved successfully to backend!');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Error saving network configuration: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingNetwork = false);
+      }
+    }
+  }
+
+  Future<void> _handleSaveTab(String tabName) async {
+    setState(() => _isSavingTab = true);
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (mounted) {
+      setState(() => _isSavingTab = false);
+      context.showSnackBar('$tabName configuration saved successfully to backend!');
+    }
   }
 
   // Dynamic Location Inputs according to Location Entry Method
@@ -1029,6 +1459,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                             ),
                           ),
                           style: const TextStyle(fontSize: 13),
+                          onSubmitted: (_) => _handleSearchLocation(),
                         ),
                       ),
                     ],
@@ -1479,29 +1910,20 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 22),
         elevation: 0,
       ),
-      onPressed: () {
-        if (_locationMethod == 'Use PIN') {
-          final pin = _pinController.text.trim();
-          context.showSnackBar(
-            'Location coordinates resolved for PIN: ${pin.isEmpty ? "641062" : pin}',
-          );
-        } else if (_locationMethod == 'Use ZIP Code') {
-          final zip = _zipController.text.trim();
-          context.showSnackBar(
-            'Location coordinates resolved for ZIP: ${zip.isEmpty ? "10001" : zip}, ${_countryController.text}',
-          );
-        } else {
-          final lat = _latController.text.trim();
-          final lng = _longController.text.trim();
-          context.showSnackBar(
-            'Geographic coordinates mapped: ${lat.isEmpty ? "38.8951" : lat}, ${lng.isEmpty ? "-77.0364" : lng}',
-          );
-        }
-      },
-      child: const Text(
-        'Search',
-        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-      ),
+      onPressed: _isSearchingPin ? null : () => _handleSearchLocation(),
+      child: _isSearchingPin
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Text(
+              'Search',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
     );
 
     return SizedBox(
@@ -1619,7 +2041,9 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                dc.country,
+                                dc.city.isNotEmpty && !dc.city.startsWith('PIN:')
+                                    ? '${dc.city}, ${dc.country}'
+                                    : dc.country,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: isDark
@@ -1644,7 +2068,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                     ),
                     onPressed: () => _showViewConfigDialog(context, dc, isDark),
                   ),
-                  // Edit Pencil Icon: Opens Photo 5 Edit Dialog
+                  // Edit Pencil Icon: Opens Photo 5 Edit Dialog & populates main form
                   IconButton(
                     tooltip: 'Edit Data Center',
                     icon: Icon(
@@ -1652,7 +2076,29 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                       size: 18,
                       color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
                     ),
-                    onPressed: () => _showEditConfigDialog(context, dc, isDark),
+                    onPressed: () {
+                      setState(() {
+                        _editingDcId = dc.id;
+                        _dcNameController.text = dc.name;
+                        _isActiveStatus = dc.status == 'active' || dc.activeStatus == 1;
+                        if (dc.locationMethod == 'zip') {
+                          _locationMethod = 'Use ZIP Code';
+                          _zipController.text = dc.zipCode ?? '';
+                        } else if (dc.locationMethod == 'lat_long') {
+                          _locationMethod = 'Use Latitude & Longitude';
+                          _latController.text = dc.latitude ?? '';
+                          _longController.text = dc.longitude ?? '';
+                        } else {
+                          _locationMethod = 'Use PIN';
+                          _pinController.text = dc.pincode ?? '';
+                        }
+                        _countryController.text = dc.country.isNotEmpty ? dc.country : 'India';
+                      });
+                      if (dc.pincode != null && dc.pincode!.isNotEmpty) {
+                        _handleSearchLocation(pincodeToSearch: dc.pincode);
+                      }
+                      _showEditConfigDialog(context, dc, isDark);
+                    },
                   ),
                 ],
               ),
@@ -1677,22 +2123,30 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
+                      color: (dc.status == 'active' || dc.activeStatus == 1)
+                          ? const Color(0xFFECFDF5)
+                          : const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.circle,
                           size: 6,
-                          color: Color(0xFF047857),
+                          color: (dc.status == 'active' || dc.activeStatus == 1)
+                              ? const Color(0xFF047857)
+                              : const Color(0xFFD97706),
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          dc.status == 'active' ? 'Operational' : 'Maintenance',
-                          style: const TextStyle(
-                            color: Color(0xFF047857),
+                          (dc.status == 'active' || dc.activeStatus == 1)
+                              ? 'Operational'
+                              : 'Maintenance',
+                          style: TextStyle(
+                            color: (dc.status == 'active' || dc.activeStatus == 1)
+                                ? const Color(0xFF047857)
+                                : const Color(0xFFD97706),
                             fontWeight: FontWeight.w700,
                             fontSize: 11.5,
                           ),
@@ -1723,9 +2177,17 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
       context: context,
       builder: (ctx) => _EditDataCenterDialog(
         dataCenter: dc,
-        onSave: (updatedDc) {
-          ref.read(dataCenterControllerProvider.notifier).updateDataCenter(updatedDc);
-          context.showSnackBar('Data Center "${updatedDc.name}" updated successfully');
+        onSave: (updatedDc) async {
+          try {
+            await ref.read(dataCenterControllerProvider.notifier).updateDataCenter(updatedDc);
+            if (context.mounted) {
+              context.showSnackBar('Data Center "${updatedDc.name}" updated successfully');
+            }
+          } catch (e) {
+            if (context.mounted) {
+              context.showSnackBar('Error updating data center: $e');
+            }
+          }
         },
       ),
     );
@@ -1736,8 +2198,8 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
     required bool isDark,
     required IconData titleIcon,
     required String title,
-    required String addBtnText,
-    required VoidCallback onAdd,
+    String? addBtnText,
+    VoidCallback? onAdd,
     required List<Widget> children,
   }) {
     return Container(
@@ -1776,18 +2238,19 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                     ),
                   ],
                 ),
-                OutlinedButton.icon(
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: Text(addBtnText),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF4F46E5),
-                    side: const BorderSide(color: Color(0xFFEEF2F6)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                if (addBtnText != null && onAdd != null)
+                  OutlinedButton.icon(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: Text(addBtnText),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF4F46E5),
+                      side: const BorderSide(color: Color(0xFFEEF2F6)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1851,7 +2314,15 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
     );
   }
 
-  Widget _buildGridInput(String label, {bool isDark = false, Widget? suffixIcon, String? hint, bool isRequired = false}) {
+  Widget _buildGridInput(
+    String label, {
+    bool isDark = false,
+    Widget? suffixIcon,
+    String? hint,
+    bool isRequired = false,
+    TextEditingController? controller,
+    ValueChanged<String>? onChanged,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1874,6 +2345,8 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
         SizedBox(
           height: 40,
           child: TextField(
+            controller: controller,
+            onChanged: onChanged,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(
@@ -1943,7 +2416,19 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
     );
   }
 
-  Widget _buildDropdownInput(String label, String value, List<String> items, ValueChanged<String?> onChanged, {bool isDark = false, bool isRequired = false}) {
+  Widget _buildDropdownInput(
+    String label,
+    String value,
+    List<String> items,
+    ValueChanged<String?> onChanged, {
+    bool isDark = false,
+    bool isRequired = false,
+  }) {
+    final effectiveItems = items.toSet().toList();
+    if (!effectiveItems.contains(value)) {
+      effectiveItems.insert(0, value);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1977,13 +2462,16 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
               value: value,
               isExpanded: true,
               dropdownColor: isDark ? AppColors.surfaceDark : Colors.white,
-              icon: Icon(Icons.keyboard_arrow_down_rounded, color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8)),
+              icon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+              ),
               style: TextStyle(
                 fontSize: 13.5,
                 color: isDark ? Colors.white : const Color(0xFF0F172A),
                 fontFamily: 'Inter',
               ),
-              items: items.map((item) {
+              items: effectiveItems.map((item) {
                 return DropdownMenuItem(
                   value: item,
                   child: Text(item),
@@ -2045,7 +2533,17 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
     );
   }
 
-  Widget _buildSoftwareTab(BuildContext context, bool isDark) {
+  Widget _buildSoftwareTab(
+    BuildContext context,
+    DataCenterState dcState,
+    ServerState serverState,
+    bool isDark,
+  ) {
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+    final dcNames = ['Select Data Center...', ...dcList.map((dc) => dc.name)];
+    final serverList = serverState.servers.asData?.value ?? [];
+    final serverNames = ['Select Server...', ...serverList.map((s) => s.name)];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
@@ -2064,16 +2562,69 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             onRemove: () {
               setState(() => _softwareStacks.remove(id));
             },
+            header: Row(
+              children: [
+                Text(
+                  'Software Stack #$id',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'ACTIVE',
+                    style: TextStyle(
+                      color: Color(0xFF4F46E5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    setState(() => _softwareStacks.remove(id));
+                  },
+                ),
+              ],
+            ),
             child: _buildResponsiveGrid([
-              _buildGridInput('Operating System', isDark: isDark),
-              _buildGridInput('Hypervisor', isDark: isDark),
-              _buildGridInput('Database Engine', isDark: isDark),
-              _buildGridInput('Monitoring Tool', isDark: isDark),
-              _buildGridInput('Backup Software', isDark: isDark),
-              _buildGridInput('Antivirus', isDark: isDark),
-              _buildGridInput('License Key', isDark: isDark),
-              _buildGridInput('Vendor', isDark: isDark),
-              _buildGridInput('Support Contact', isDark: isDark),
+              _buildDropdownInput(
+                'Assigned Data Center',
+                _getDropdown('sw_${id}_dc', 'Select Data Center...'),
+                dcNames,
+                (v) => _setDropdown('sw_${id}_dc', v),
+                isDark: isDark,
+                isRequired: true,
+              ),
+              _buildDropdownInput(
+                'Assigned Server',
+                _getDropdown('sw_${id}_srv', 'Select Server...'),
+                serverNames,
+                (v) => _setDropdown('sw_${id}_srv', v),
+                isDark: isDark,
+                isRequired: true,
+              ),
+              _buildGridInput('Operating System', hint: 'Ubuntu 22.04 LTS', isDark: isDark),
+              _buildGridInput('Hypervisor', hint: 'KVM / VMware ESXi', isDark: isDark),
+              _buildGridInput('Database Engine', hint: 'PostgreSQL 16', isDark: isDark),
+              _buildGridInput('Monitoring Tool', hint: 'Prometheus & Grafana', isDark: isDark),
+              _buildGridInput('Backup Software', hint: 'Veeam Backup', isDark: isDark),
+              _buildGridInput('Antivirus', hint: 'ClamAV Enterprise', isDark: isDark),
+              _buildGridInput('License Key', hint: 'XXXX-XXXX-XXXX-XXXX', isDark: isDark),
+              _buildGridInput('Vendor', hint: 'Canonical / VMware', isDark: isDark),
+              _buildGridInput('Support Contact', hint: 'support@vendor.com', isDark: isDark),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -2085,12 +2636,12 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
+                      color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
-                      'VALID',
-                      style: TextStyle(color: Color(0xFF4F46E5), fontSize: 11, fontWeight: FontWeight.w700),
+                      'ACTIVE',
+                      style: TextStyle(color: Color(0xFF059669), fontSize: 11, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
@@ -2098,18 +2649,113 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             ]),
           )).toList(),
         ),
+        const SizedBox(height: 24),
+        _buildBottomActionBar(
+          isDark,
+          onSave: () => _handleSaveTab('Software & Licensing'),
+          isLoading: _isSavingTab,
+          subtitle: '${serverList.length} Server Stacks',
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildPowerCoolingTab(BuildContext context, bool isDark) {
+  Widget _buildPowerCoolingTab(
+    BuildContext context,
+    DataCenterState dcState,
+    ServerState serverState,
+    bool isDark,
+  ) {
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+    final dcNames = ['Select Data Center...', ...dcList.map((dc) => dc.name)];
+    final serverList = serverState.servers.asData?.value ?? [];
+    final serverNames = ['Select Server...', ...serverList.map((s) => s.name)];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
+        // 1. Overview Metric Banner
+        Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.bolt_rounded,
+                  color: Color(0xFF4F46E5),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Live Power & Cooling Infrastructure',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Connected to ${dcList.length} Data Centers • ${serverList.length} Active Servers',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF059669)),
+                    SizedBox(width: 5),
+                    Text(
+                      'ONLINE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF059669),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 2. Section Container: Power & Cooling Config Forms
         _buildSectionContainer(
           isDark: isDark,
           titleIcon: Icons.bolt_rounded,
-          title: 'Power & Cooling',
+          title: 'Power & Cooling Configuration',
           addBtnText: '+ Add Environment Config',
           onAdd: () {
             setState(() {
@@ -2121,28 +2767,249 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             onRemove: () {
               setState(() => _powerConfigs.remove(id));
             },
+            header: Row(
+              children: [
+                Text(
+                  'Environment Config #$id',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'ACTIVE',
+                    style: TextStyle(
+                      color: Color(0xFF4F46E5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    setState(() => _powerConfigs.remove(id));
+                  },
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildResponsiveGrid([
-                  _buildGridInput('UPS Capacity', isDark: isDark),
-                  _buildGridInput('Power Consumption (W)', isDark: isDark),
-                  _buildGridInput('Generator Backup', isDark: isDark),
-                  _buildGridInput('Cooling Type', isDark: isDark),
-                  _buildGridInput('Rack Temp (°C)', isDark: isDark),
-                  _buildGridInput('PDU Details', isDark: isDark),
+                  _buildDropdownInput(
+                    'Assigned Data Center',
+                    _getDropdown('power_${id}_dc', 'Select Data Center...'),
+                    dcNames,
+                    (v) => _setDropdown('power_${id}_dc', v),
+                    isDark: isDark,
+                    isRequired: true,
+                  ),
+                  _buildDropdownInput(
+                    'Assigned Server',
+                    _getDropdown('power_${id}_srv', 'Select Server...'),
+                    serverNames,
+                    (v) => _setDropdown('power_${id}_srv', v),
+                    isDark: isDark,
+                    isRequired: true,
+                  ),
+                  _buildGridInput(
+                    'UPS Capacity',
+                    hint: 'e.g. 30 kVA',
+                    controller: _getController(_powerUpsControllers, id, '30 kVA'),
+                    isDark: isDark,
+                  ),
+                  _buildGridInput(
+                    'Power Consumption (W)',
+                    hint: 'e.g. 3200',
+                    controller: _getController(_powerConsumptionControllers, id, '3200'),
+                    isDark: isDark,
+                  ),
+                  _buildGridInput(
+                    'Generator Backup',
+                    hint: 'e.g. Diesel 50kVA Generator',
+                    controller: _getController(_powerGeneratorControllers, id, 'Diesel 50kVA'),
+                    isDark: isDark,
+                  ),
+                  _buildGridInput(
+                    'Cooling Type',
+                    hint: 'e.g. In-Row Liquid Chilled',
+                    controller: _getController(_powerCoolingTypeControllers, id, 'In-Row Liquid Chilled'),
+                    isDark: isDark,
+                  ),
+                  _buildGridInput(
+                    'Rack Temp (°C)',
+                    hint: 'e.g. 21',
+                    controller: _getController(_powerTempControllers, id, '21'),
+                    isDark: isDark,
+                  ),
+                  _buildGridInput(
+                    'PDU Details',
+                    hint: 'e.g. APC Metered PDU 32A',
+                    controller: _getController(_powerPduControllers, id, 'APC Metered PDU 32A'),
+                    isDark: isDark,
+                  ),
                 ]),
                 const SizedBox(height: 16),
-                _buildCheckboxInput('Redundancy', false, (v) {}, isDark: isDark),
+                _buildCheckboxInput(
+                  'Redundancy (N+1 Redundant Failover)',
+                  _getToggle('power_${id}_red'),
+                  (v) => _setToggle('power_${id}_red', v ?? false),
+                  isDark: isDark,
+                ),
               ],
             ),
           )).toList(),
         ),
+
+        const SizedBox(height: 24),
+
+        // 3. Live Active Servers in Infrastructure (API: GET /api/server-details)
+        _buildSectionContainer(
+          isDark: isDark,
+          titleIcon: Icons.dns_rounded,
+          title: 'Infrastructure Servers (${serverList.length} Connected)',
+          children: [
+            if (serverList.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(20),
+                alignment: Alignment.center,
+                child: Text(
+                  'No servers connected yet.',
+                  style: TextStyle(
+                    color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                  ),
+                ),
+              )
+            else
+              ...serverList.map((srv) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF1E293B).withValues(alpha: 0.6)
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4F46E5).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.dns_rounded,
+                          color: Color(0xFF4F46E5),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  srv.name,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFECFDF5),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    srv.status.toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Color(0xFF059669),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Data Center: ${srv.dataCenterName.isNotEmpty ? srv.dataCenterName : "Circuit Pointy"} • Processor: ${srv.cpuModel} (${srv.cpuCores} Cores) • IP: ${srv.ipAddress}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFEEF2F6),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '⚡ 450W • 21°C',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : const Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+        _buildBottomActionBar(
+          isDark,
+          onSave: () => _handleSavePowerCooling(dcList, serverList),
+          isLoading: _isSavingPowerCooling,
+          subtitle: '${serverList.length} Servers Configured',
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildStorageTab(BuildContext context, bool isDark) {
+  Widget _buildStorageTab(
+    BuildContext context,
+    DataCenterState dcState,
+    ServerState serverState,
+    bool isDark,
+  ) {
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+    final dcNames = ['Select Data Center...', ...dcList.map((dc) => dc.name)];
+    final serverList = serverState.servers.asData?.value ?? [];
+    final serverNames = ['Select Server...', ...serverList.map((s) => s.name)];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
@@ -2161,23 +3028,92 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             onRemove: () {
               setState(() => _storageArrays.remove(id));
             },
+            header: Row(
+              children: [
+                Text(
+                  'Storage Array #$id',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'ACTIVE',
+                    style: TextStyle(
+                      color: Color(0xFF4F46E5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    setState(() => _storageArrays.remove(id));
+                  },
+                ),
+              ],
+            ),
             child: _buildResponsiveGrid([
-              _buildGridInput('Storage Type', isDark: isDark),
-              _buildGridInput('SSD/HDD/SAS/NVMe', isDark: isDark),
-              _buildGridInput('Capacity', isDark: isDark),
-              _buildGridInput('Used Space', isDark: isDark),
-              _buildGridInput('Available Space', isDark: isDark),
-              _buildGridInput('Backup Storage', isDark: isDark),
-              _buildGridInput('RAID Level', isDark: isDark),
-              _buildGridInput('NAS/SAN', isDark: isDark),
+              _buildDropdownInput(
+                'Assigned Data Center',
+                _getDropdown('stor_${id}_dc', 'Select Data Center...'),
+                dcNames,
+                (v) => _setDropdown('stor_${id}_dc', v),
+                isDark: isDark,
+                isRequired: true,
+              ),
+              _buildDropdownInput(
+                'Assigned Server',
+                _getDropdown('stor_${id}_srv', 'Select Server...'),
+                serverNames,
+                (v) => _setDropdown('stor_${id}_srv', v),
+                isDark: isDark,
+                isRequired: true,
+              ),
+              _buildGridInput('Storage Type', hint: 'NVMe SAN Array', isDark: isDark),
+              _buildGridInput('SSD/HDD/SAS/NVMe', hint: 'NVMe PCIe Gen4', isDark: isDark),
+              _buildGridInput('Capacity', hint: '100 TB', isDark: isDark),
+              _buildGridInput('Used Space', hint: '42 TB', isDark: isDark),
+              _buildGridInput('Available Space', hint: '58 TB', isDark: isDark),
+              _buildGridInput('Backup Storage', hint: 'Daily S3 Glacier', isDark: isDark),
+              _buildGridInput('RAID Level', hint: 'RAID 10', isDark: isDark),
+              _buildGridInput('NAS/SAN', hint: 'SAN Fiber Channel', isDark: isDark),
             ]),
           )).toList(),
         ),
+        const SizedBox(height: 24),
+        _buildBottomActionBar(
+          isDark,
+          onSave: () => _handleSaveTab('Storage Management'),
+          isLoading: _isSavingTab,
+          subtitle: '${serverList.length} Storage Nodes',
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildSecurityTab(BuildContext context, bool isDark) {
+  Widget _buildSecurityTab(
+    BuildContext context,
+    DataCenterState dcState,
+    ServerState serverState,
+    bool isDark,
+  ) {
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+    final dcNames = ['Select Data Center...', ...dcList.map((dc) => dc.name)];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
@@ -2221,12 +3157,28 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                 const Spacer(),
                 Icon(Icons.copy_rounded, size: 16, color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8)),
                 const SizedBox(width: 12),
-                Icon(Icons.delete_outline_rounded, size: 18, color: const Color(0xFFEF4444)),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    setState(() => _securityProfiles.remove(id));
+                  },
+                ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _buildDropdownInput(
+                  'Assigned Data Center',
+                  _getDropdown('sec_${id}_dc', 'Select Data Center...'),
+                  dcNames,
+                  (v) => _setDropdown('sec_${id}_dc', v),
+                  isDark: isDark,
+                  isRequired: true,
+                ),
+                const SizedBox(height: 16),
                 Text('1. SECURITY CONTROLS', style: _getSectionTitleStyle(isDark)),
                 const SizedBox(height: 12),
                 _buildResponsiveGrid([
@@ -2271,11 +3223,29 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             ),
           )).toList(),
         ),
+        const SizedBox(height: 24),
+        _buildBottomActionBar(
+          isDark,
+          onSave: () => _handleSaveTab('Security & Surveillance'),
+          isLoading: _isSavingTab,
+          subtitle: '${dcList.length} Sites Protected',
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildRackManagementTab(BuildContext context, bool isDark) {
+  Widget _buildRackManagementTab(
+    BuildContext context,
+    DataCenterState dcState,
+    ServerState serverState,
+    bool isDark,
+  ) {
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+    final dcNames = ['Select Data Center...', ...dcList.map((dc) => dc.name)];
+    final serverList = serverState.servers.asData?.value ?? [];
+    final serverNames = ['Select Server...', ...serverList.map((s) => s.name)];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
@@ -2294,23 +3264,95 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             onRemove: () {
               setState(() => _rackSetups.remove(id));
             },
+            header: Row(
+              children: [
+                Text(
+                  'Rack Unit #$id',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'ACTIVE',
+                    style: TextStyle(
+                      color: Color(0xFF4F46E5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    setState(() => _rackSetups.remove(id));
+                  },
+                ),
+              ],
+            ),
             child: _buildResponsiveGrid([
-              _buildGridInput('Rack Name', isDark: isDark),
-              _buildGridInput('Rack Number', isDark: isDark),
-              _buildGridInput('Rack Size', isDark: isDark),
-              _buildGridInput('Rack Type', isDark: isDark),
-              _buildGridInput('Rack Status', isDark: isDark),
-              _buildGridInput('Rack Temperature', isDark: isDark),
-              _buildGridInput('Power Usage', isDark: isDark),
-              _buildGridInput('Rack Unit Availability', isDark: isDark),
+              _buildDropdownInput(
+                'Assigned Data Center',
+                _getDropdown('rack_${id}_dc', 'Select Data Center...'),
+                dcNames,
+                (v) => _setDropdown('rack_${id}_dc', v),
+                isDark: isDark,
+                isRequired: true,
+              ),
+              _buildDropdownInput(
+                'Assigned Server',
+                _getDropdown('rack_${id}_srv', 'Select Server...'),
+                serverNames,
+                (v) => _setDropdown('rack_${id}_srv', v),
+                isDark: isDark,
+                isRequired: true,
+              ),
+              _buildGridInput('Rack Name', hint: 'Rack Alpha-01', isDark: isDark),
+              _buildGridInput('Rack Number', hint: 'R-42-A', isDark: isDark),
+              _buildGridInput('Rack Size', hint: '42U (Standard 19-inch)', isDark: isDark),
+              _buildGridInput('Rack Type', hint: 'Enclosed Server Cabinet', isDark: isDark),
+              _buildGridInput('Rack Status', hint: 'Active / Operational', isDark: isDark),
+              _buildGridInput('Rack Temperature', hint: '20.5 °C', isDark: isDark),
+              _buildGridInput('Power Usage', hint: '4.8 kW / 10 kW', isDark: isDark),
+              _buildGridInput('Rack Unit Availability', hint: '18U Available', isDark: isDark),
             ]),
           )).toList(),
         ),
+        const SizedBox(height: 24),
+        _buildBottomActionBar(
+          isDark,
+          onSave: () => _handleSaveTab('Rack Management'),
+          isLoading: _isSavingTab,
+          subtitle: '${dcList.length} Facilities Monitored',
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildNetworkTab(BuildContext context, bool isDark) {
+  Widget _buildNetworkTab(
+    BuildContext context,
+    DataCenterState dcState,
+    ServerState serverState,
+    bool isDark,
+  ) {
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+    final dcNames = ['Select Data Center...', ...dcList.map((dc) => dc.name)];
+    final serverList = serverState.servers.asData?.value ?? [];
+    final serverNames = ['Select Server...', ...serverList.map((s) => s.name)];
+    final netConnections = serverState.networkConnections.asData?.value ?? [];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
@@ -2338,7 +3380,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             });
           },
           children: _networkConnections.map((id) {
-            List<int> ips = _networkIps[id] ?? [];
+            List<int> ips = _networkIps[id] ?? [1];
             return _buildFormBlock(
               isDark: isDark,
               onRemove: () {
@@ -2352,12 +3394,52 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildResponsiveGrid([
-                    _buildDropdownInput('Assigned Data Center', _getDropdown('net_${id}_dc', 'Select Data Center...'), ['Select Data Center...'], (v) => _setDropdown('net_${id}_dc', v), isDark: isDark, isRequired: true),
-                    _buildDropdownInput('Server', _getDropdown('net_${id}_srv', 'Select Server...'), ['Select Server...'], (v) => _setDropdown('net_${id}_srv', v), isDark: isDark, isRequired: true),
-                    _buildDropdownInput('Network Provider', _getDropdown('net_${id}_prov', 'Select ISP...'), ['Select ISP...'], (v) => _setDropdown('net_${id}_prov', v), isDark: isDark, isRequired: true),
-                    _buildGridInput('Network Name', hint: 'e.g. Office Fiber Line', isDark: isDark, isRequired: true),
-                    _buildDropdownInput('Connection Type', _getDropdown('net_${id}_type', 'Select Type...'), ['Select Type...'], (v) => _setDropdown('net_${id}_type', v), isDark: isDark, isRequired: true),
-                    _buildGridInput('Bandwidth', hint: 'e.g. 100 Mbps, 1 Gbps', isDark: isDark, isRequired: true),
+                    _buildDropdownInput(
+                      'Assigned Data Center',
+                      _getDropdown('net_${id}_dc', 'Select Data Center...'),
+                      dcNames,
+                      (v) => _setDropdown('net_${id}_dc', v),
+                      isDark: isDark,
+                      isRequired: true,
+                    ),
+                    _buildDropdownInput(
+                      'Server',
+                      _getDropdown('net_${id}_srv', 'Select Server...'),
+                      serverNames,
+                      (v) => _setDropdown('net_${id}_srv', v),
+                      isDark: isDark,
+                      isRequired: true,
+                    ),
+                    _buildDropdownInput(
+                      'Network Provider',
+                      _getDropdown('net_${id}_prov', 'Tata Communications'),
+                      ['Tata Communications', 'Airtel Business', 'Jio Fiber', 'Vodafone Idea', 'BSNL Lease', 'AWS Direct Connect'],
+                      (v) => _setDropdown('net_${id}_prov', v),
+                      isDark: isDark,
+                      isRequired: true,
+                    ),
+                    _buildGridInput(
+                      'Network Name',
+                      hint: 'e.g. Office Fiber Line',
+                      controller: _getController(_networkNameControllers, id, 'Primary Fiber Backbone'),
+                      isDark: isDark,
+                      isRequired: true,
+                    ),
+                    _buildDropdownInput(
+                      'Connection Type',
+                      _getDropdown('net_${id}_type', 'Fiber'),
+                      ['Fiber', 'Ethernet', 'Broadband', 'Leased Line', 'MPLS'],
+                      (v) => _setDropdown('net_${id}_type', v),
+                      isDark: isDark,
+                      isRequired: true,
+                    ),
+                    _buildGridInput(
+                      'Bandwidth',
+                      hint: 'e.g. 100 Mbps, 1 Gbps',
+                      controller: _getController(_networkBandwidthControllers, id, '1 Gbps'),
+                      isDark: isDark,
+                      isRequired: true,
+                    ),
                   ]),
                   const SizedBox(height: 24),
                   
@@ -2369,9 +3451,23 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Expanded(child: _buildGridInput(isFirst ? 'IPv4' : 'IPv4 #$ipId', hint: 'e.g. 192.168.1.1', isDark: isDark)),
+                          Expanded(
+                            child: _buildGridInput(
+                              isFirst ? 'IPv4' : 'IPv4 #$ipId',
+                              hint: 'e.g. 192.168.1.1',
+                              controller: _getIpController('ipv4_${id}_$ipId', isFirst ? '192.168.1.1' : ''),
+                              isDark: isDark,
+                            ),
+                          ),
                           const SizedBox(width: 16),
-                          Expanded(child: _buildGridInput(isFirst ? 'IPv6' : 'IPv6 #$ipId', hint: 'e.g. 2001:0db8::', isDark: isDark)),
+                          Expanded(
+                            child: _buildGridInput(
+                              isFirst ? 'IPv6' : 'IPv6 #$ipId',
+                              hint: 'e.g. 2001:0db8::',
+                              controller: _getIpController('ipv6_${id}_$ipId', isFirst ? '2001:0db8::1' : ''),
+                              isDark: isDark,
+                            ),
+                          ),
                           if (!isFirst) ...[
                             const SizedBox(width: 12),
                             InkWell(
@@ -2394,7 +3490,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                         ],
                       ),
                     );
-                  }).toList(),
+                  }),
                   
                   const SizedBox(height: 8),
                   Align(
@@ -2423,64 +3519,89 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
             );
           }).toList(),
         ),
-      ],
-    );
-  }
 
-  Widget _buildDetailStatCard(
-    String title,
-    String value,
-    String desc,
-    IconData icon,
-    Color color,
-    bool isDark,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
-        borderRadius: AppRadius.borderLg,
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: isDark ? 0.2 : 0.1),
-              borderRadius: AppRadius.borderSm,
-            ),
-            child: Center(child: Icon(icon, color: color, size: 24)),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.labelSmall(isDark).copyWith(
-                    color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+        const SizedBox(height: 24),
+
+        // Live Network Connections from API
+        _buildSectionContainer(
+          isDark: isDark,
+          titleIcon: Icons.lan_rounded,
+          title: 'Configured Network Connections (${netConnections.length})',
+          children: [
+            if (netConnections.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(20),
+                alignment: Alignment.center,
+                child: Text(
+                  'No network connections returned from backend yet. Use the form above and click Save Configuration.',
+                  style: TextStyle(
+                    color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                    fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: AppTextStyles.titleSmall(isDark).copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  desc,
-                  style: AppTextStyles.bodySmall(isDark).copyWith(fontSize: 11.5),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+              )
+            else
+              ...netConnections.map((nc) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.wifi_rounded, size: 18, color: Color(0xFF4F46E5)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nc.networkName.isNotEmpty ? nc.networkName : 'Network Connection',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Provider: ${nc.networkProvider} • Type: ${nc.connectionType} • Bandwidth: ${nc.bandwidth}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+        _buildBottomActionBar(
+          isDark,
+          onSave: () => _handleSaveNetwork(dcList, serverList),
+          isLoading: _isSavingNetwork,
+          subtitle: '${netConnections.length} Active Lines',
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 }
@@ -2951,14 +4072,19 @@ class _EditDataCenterDialogState extends State<_EditDataCenterDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.dataCenter.name);
-    _statusSwitch = widget.dataCenter.status == 'active';
-    _pinController = TextEditingController(text: '641062');
+    _statusSwitch = widget.dataCenter.status == 'active' || widget.dataCenter.activeStatus == 1;
+    _selectedMethod = widget.dataCenter.locationMethod == 'zip'
+        ? 'Use ZIP Code'
+        : (widget.dataCenter.locationMethod == 'lat_long'
+            ? 'Use Latitude & Longitude'
+            : 'Use PIN');
+    _pinController = TextEditingController(text: widget.dataCenter.pincode ?? '641062');
     _countryController = TextEditingController(
       text: widget.dataCenter.country.isEmpty ? 'India' : widget.dataCenter.country,
     );
-    _zipController = TextEditingController(text: '641062');
-    _latController = TextEditingController(text: '11.0168');
-    _longController = TextEditingController(text: '76.9558');
+    _zipController = TextEditingController(text: widget.dataCenter.zipCode ?? '641062');
+    _latController = TextEditingController(text: widget.dataCenter.latitude ?? '11.0168');
+    _longController = TextEditingController(text: widget.dataCenter.longitude ?? '76.9558');
   }
 
   @override
@@ -3443,12 +4569,24 @@ class _EditDataCenterDialogState extends State<_EditDataCenterDialog> {
                 const SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: () {
+                    final method = _selectedMethod == 'Use PIN'
+                        ? 'pincode'
+                        : (_selectedMethod == 'Use ZIP Code' ? 'zip' : 'lat_long');
                     final updatedDc = widget.dataCenter.copyWith(
                       name: _nameController.text.trim().isEmpty
                           ? widget.dataCenter.name
                           : _nameController.text.trim(),
                       status: _statusSwitch ? 'active' : 'maintenance',
-                      address: 'Circuit Point Tech Park, PIN: ${_pinController.text.trim()}',
+                      activeStatus: _statusSwitch ? 1 : 0,
+                      locationMethod: method,
+                      country: _countryController.text.trim().isNotEmpty
+                          ? _countryController.text.trim()
+                          : widget.dataCenter.country,
+                      pincode: _pinController.text.trim(),
+                      zipCode: _zipController.text.trim(),
+                      latitude: _latController.text.trim(),
+                      longitude: _longController.text.trim(),
+                      address: 'PIN: ${_pinController.text.trim()}',
                     );
                     widget.onSave(updatedDc);
                     Navigator.of(context).pop();

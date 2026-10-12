@@ -35,8 +35,13 @@ class PreferencesService {
   Future<bool> setHasDashboardLayout(bool hasLayout) =>
       _prefs.setBool(AppConstants.dashboardLayoutKey, hasLayout);
 
-  String getApiBaseUrl() =>
-      _prefs.getString(AppConstants.apiBaseUrlKey) ?? AppConstants.defaultBaseUrl;
+  String getApiBaseUrl() {
+    final url = _prefs.getString(AppConstants.apiBaseUrlKey);
+    if (url == null || url.isEmpty || url.contains('datacenter.cloud')) {
+      return AppConstants.defaultBaseUrl;
+    }
+    return url;
+  }
   Future<bool> setApiBaseUrl(String url) =>
       _prefs.setString(AppConstants.apiBaseUrlKey, url);
 }

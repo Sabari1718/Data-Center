@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../data/models/data_center_model.dart';
 import '../../../data/models/server_model.dart';
 import '../../../shared/components/server_card.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -19,7 +20,34 @@ import '../../../shared/widgets/error_state.dart';
 import '../../../shared/widgets/loading_skeleton.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../../shared/widgets/sub_tab_bar.dart';
+import '../../data_center/presentation/data_center_controller.dart';
 import 'server_controller.dart';
+
+class _StorageItem {
+  final TextEditingController nameCtrl = TextEditingController();
+  String type = 'SSD';
+  final TextEditingController capacityCtrl = TextEditingController(text: '0');
+
+  void dispose() {
+    nameCtrl.dispose();
+    capacityCtrl.dispose();
+  }
+}
+
+class _IpRow {
+  final TextEditingController ipv4Ctrl = TextEditingController();
+  final TextEditingController ipv6Ctrl = TextEditingController();
+
+  _IpRow({String ipv4 = '', String ipv6 = ''}) {
+    ipv4Ctrl.text = ipv4;
+    ipv6Ctrl.text = ipv6;
+  }
+
+  void dispose() {
+    ipv4Ctrl.dispose();
+    ipv6Ctrl.dispose();
+  }
+}
 
 class ServersScreen extends ConsumerStatefulWidget {
   const ServersScreen({super.key});
@@ -46,20 +74,17 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   ];
 
   // Add Server Form controllers & state
-  final _serverNameCtrl = TextEditingController(text: 'Web-Node-01');
-  final _processorCtrl = TextEditingController(text: 'Intel Xeon Platinum');
-  final _coresCtrl = TextEditingController(text: '16');
-  final _threadsCtrl = TextEditingController(text: '32');
-  final _macAddressCtrl = TextEditingController(text: '00:1A:2B:3C:4D:5E');
+  ServerModel? _editingServer;
+  String? _selectedDataCenterId;
+  final _serverNameCtrl = TextEditingController(text: '');
+  final _processorCtrl = TextEditingController(text: '');
+  final _coresCtrl = TextEditingController(text: '0');
+  final _threadsCtrl = TextEditingController(text: '0');
+  final _macAddressCtrl = TextEditingController(text: '');
 
-  String _selectedDataCenter = 'Select Data Center';
   String _selectedServerType = 'Rack Server';
   String _selectedStatus = 'Active';
-
-  final List<String> _dataCenters = [
-    'Select Data Center',
-    'Circuit Point',
-  ];
+  bool _isSavingServer = false;
 
   final List<String> _serverTypes = [
     'Rack Server',
@@ -71,8 +96,49 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   final List<String> _statusOptions = [
     'Active',
     'Maintenance',
+    'Stopped',
     'Offline',
   ];
+
+  // Storage Form state
+  final List<_StorageItem> _storageItems = [];
+
+  // Network Form state
+  String? _selectedNetworkDcId;
+  String? _selectedNetworkServerId;
+  String _selectedNetworkProvider = 'Jio';
+  final _networkNameCtrl = TextEditingController(text: 'gggh');
+  String _selectedConnectionType = '5G';
+  final _bandwidthCtrl = TextEditingController(text: '122');
+  final List<_IpRow> _ipRows = [];
+  bool _isSavingNetwork = false;
+
+  final List<String> _networkProviders = [
+    'Jio',
+    'Airtel',
+    'Vodafone Idea',
+    'BSNL',
+    'ACT Fibernet',
+    'Tata Communications',
+    'Cloudflare',
+    'Other',
+  ];
+
+  final List<String> _connectionTypes = [
+    '5G',
+    '4G LTE',
+    'Fiber',
+    'Dedicated Leased Line',
+    'Broadband',
+    'Satellite',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _storageItems.add(_StorageItem());
+    _ipRows.add(_IpRow(ipv4: '122.233.44', ipv6: '7272:uur:990'));
+  }
 
   @override
   void dispose() {
@@ -81,7 +147,53 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     _coresCtrl.dispose();
     _threadsCtrl.dispose();
     _macAddressCtrl.dispose();
+    for (final item in _storageItems) {
+      item.dispose();
+    }
+    _networkNameCtrl.dispose();
+    _bandwidthCtrl.dispose();
+    for (final ip in _ipRows) {
+      ip.dispose();
+    }
     super.dispose();
+  }
+
+  void _resetServerForm() {
+    _editingServer = null;
+    _serverNameCtrl.clear();
+    _processorCtrl.clear();
+    _coresCtrl.text = '0';
+    _threadsCtrl.text = '0';
+    _macAddressCtrl.clear();
+    _selectedServerType = 'Rack Server';
+    _selectedStatus = 'Active';
+    _selectedDataCenterId = null;
+  }
+
+  void _editServer(ServerModel srv) {
+    setState(() {
+      _editingServer = srv;
+      _serverNameCtrl.text = srv.name;
+      _processorCtrl.text = srv.cpuModel;
+      _coresCtrl.text = '${srv.cpuCores}';
+      _threadsCtrl.text = '${srv.threadCount}';
+      _macAddressCtrl.text = srv.macAddress ?? '';
+      _selectedServerType = srv.serverType;
+      _selectedStatus = srv.status;
+      _selectedDataCenterId = srv.dataCenterId.isNotEmpty ? srv.dataCenterId : null;
+      _selectedTabIndex = 0;
+    });
+    context.showSnackBar('Editing server "${srv.name}". Modify values and click Save Configuration.');
+  }
+
+  String _getDataCenterName(String? id, List<DataCenterModel> dcList) {
+    if (id == null || id.isEmpty) return '';
+    try {
+      final dc = dcList.firstWhere((d) => d.id == id);
+      return dc.name;
+    } catch (_) {
+      return '';
+    }
   }
 
   @override
@@ -147,12 +259,16 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     }
   }
 
-  // 1. Add Server Tab (Exact match to Image 4)
+  // 1. Add Server Tab (Matches Screenshot 1)
   Widget _buildAddServerTab(
     BuildContext context,
     ServerState state,
     bool isDark,
   ) {
+    final dcState = ref.watch(dataCenterControllerProvider);
+    final dcList = dcState.dataCenters.value ?? [];
+    final serverList = state.servers.value ?? [];
+
     return ListView(
       padding: AppSpacing.screenPadding,
       children: [
@@ -170,7 +286,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         ),
         const SizedBox(height: 16),
 
-        // Server Node #1 Card
+        // Server Node #1 Card / Edit Server Card
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -192,15 +308,48 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Server Node #1',
+                    _editingServer != null
+                        ? 'Edit Server: ${_editingServer!.name}'
+                        : 'Server Node #1',
                     style: AppTextStyles.titleSmall(isDark).copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  if (_editingServer != null) ...[
+                    const SizedBox(width: 10),
+                    InkWell(
+                      onTap: () {
+                        setState(() => _resetServerForm());
+                        context.showSnackBar('Edit cancelled. Switched to new server mode.');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.close, size: 12, color: Color(0xFFDC2626)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Cancel Edit',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFDC2626),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const Spacer(),
-                  const StatusBadge(
-                    status: 'active',
-                    customLabel: 'ACTIVE',
+                  StatusBadge(
+                    status: _selectedStatus.toLowerCase(),
+                    customLabel: _selectedStatus.toUpperCase(),
                     size: BadgeSize.small,
                   ),
                 ],
@@ -212,19 +361,73 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: _buildDropdownField(
-                      label: 'Data Center',
-                      value: _selectedDataCenter,
-                      items: _dataCenters,
-                      onChanged: (val) => setState(() => _selectedDataCenter = val!),
-                      isDark: isDark,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Data Center',
+                          style: AppTextStyles.labelMedium(isDark).copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.surfaceDark : AppColors.backgroundLight,
+                            borderRadius: AppRadius.borderMd,
+                            border: Border.all(
+                              color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String?>(
+                              value: dcList.any((d) => d.id == _selectedDataCenterId)
+                                  ? _selectedDataCenterId
+                                  : null,
+                              hint: Text(
+                                'Select Data Center',
+                                style: AppTextStyles.bodyMedium(isDark).copyWith(
+                                  fontSize: 13,
+                                  color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                                ),
+                              ),
+                              isExpanded: true,
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 20,
+                                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                              ),
+                              dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                              style: AppTextStyles.bodyMedium(isDark).copyWith(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Text('Select Data Center'),
+                                ),
+                                ...dcList.map((dc) => DropdownMenuItem<String?>(
+                                      value: dc.id,
+                                      child: Text(dc.name, overflow: TextOverflow.ellipsis),
+                                    )),
+                              ],
+                              onChanged: (val) {
+                                setState(() => _selectedDataCenterId = val);
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: AppTextField(
                       label: 'Server Name',
-                      hintText: 'e.g. Web-Node-01',
+                      hintText: 'e.g. sabari ',
                       controller: _serverNameCtrl,
                     ),
                   ),
@@ -249,7 +452,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Processor Name',
-                      hintText: 'e.g. Intel Xeon',
+                      hintText: 'e.g. Intel Xeon / E5-2680 v4',
                       controller: _processorCtrl,
                     ),
                   ),
@@ -264,7 +467,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'CPU Cores',
-                      hintText: 'e.g. 16',
+                      hintText: 'e.g. 1',
                       controller: _coresCtrl,
                       keyboardType: TextInputType.number,
                     ),
@@ -273,7 +476,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Thread Count',
-                      hintText: 'e.g. 32',
+                      hintText: 'e.g. 1',
                       controller: _threadsCtrl,
                       keyboardType: TextInputType.number,
                     ),
@@ -289,7 +492,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'MAC Address',
-                      hintText: '00:00:00:00:00:00',
+                      hintText: 'e.g. sadccd',
                       controller: _macAddressCtrl,
                     ),
                   ),
@@ -340,7 +543,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 ),
               ),
               child: Text(
-                '${state.servers.value?.length ?? 4} Nodes',
+                '${serverList.length} Nodes',
                 style: AppTextStyles.labelSmall(isDark).copyWith(
                   fontWeight: FontWeight.w600,
                   fontSize: 11,
@@ -351,32 +554,57 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Configured Nodes Preview Cards
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final cards = state.servers.maybeWhen(
-              data: (list) {
-                if (list.isEmpty) return _getSampleCards(isDark);
-                return list.take(4).map((srv) => _buildConfiguredServerTile(srv, isDark)).toList();
+        // Configured Nodes Preview Cards (Live data from GET /api/server-details)
+        state.servers.when(
+          loading: () => LoadingSkeleton.card(height: 120),
+          error: (err, _) => ErrorState(
+            message: err.toString(),
+            onRetry: () => ref.read(serverControllerProvider.notifier).refresh(),
+          ),
+          data: (list) {
+            if (list.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.cardDark : Colors.white,
+                  borderRadius: AppRadius.borderMd,
+                  border: Border.all(
+                    color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'No server nodes configured yet. Fill form above to add a server node.',
+                    style: AppTextStyles.bodyMedium(isDark),
+                  ),
+                ),
+              );
+            }
+
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                int cols = constraints.maxWidth > 800 ? 3 : (constraints.maxWidth > 500 ? 2 : 1);
+                double spacing = 12.0;
+                double width = (constraints.maxWidth - (spacing * (cols - 1))) / cols;
+
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: list.map((srv) {
+                    return SizedBox(
+                      width: width,
+                      child: _buildConfiguredServerTile(srv, isDark),
+                    );
+                  }).toList(),
+                );
               },
-              orElse: () => _getSampleCards(isDark),
-            );
-            
-            int cols = constraints.maxWidth > 800 ? 4 : (constraints.maxWidth > 500 ? 2 : 1);
-            double spacing = 12.0;
-            double width = (constraints.maxWidth - (spacing * (cols - 1))) / cols;
-            
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: cards.map((c) => SizedBox(width: width, child: c)).toList(),
             );
           },
         ),
 
         const SizedBox(height: 20),
 
-        // Bottom Action Bar: Discard Changes / Save Configuration (Matches Image 4)
+        // Bottom Action Bar: Discard Changes / Save Configuration (Matches Screenshot 1)
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -397,6 +625,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                       color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
                     ),
                   ),
+                  Text(
+                    '${serverList.length} Servers Configured',
+                    style: AppTextStyles.bodySmall(isDark).copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -406,51 +640,19 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                     child: AppOutlinedButton(
                       text: 'Discard Changes',
                       onPressed: () {
-                        _serverNameCtrl.text = 'Web-Node-01';
-                        _processorCtrl.text = 'Intel Xeon Platinum';
-                        _coresCtrl.text = '16';
-                        _threadsCtrl.text = '32';
-                        _macAddressCtrl.text = '00:1A:2B:3C:4D:5E';
-                        context.showSnackBar('Server form reset to defaults');
+                        setState(() => _resetServerForm());
+                        context.showSnackBar('Server form reset');
                       },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: AppButton(
-                      text: 'Save Configuration',
-                      onPressed: () {
-                        final cores = int.tryParse(_coresCtrl.text) ?? 16;
-                        final newServer = ServerModel(
-                          id: 'srv-${DateTime.now().millisecondsSinceEpoch}',
-                          name: _serverNameCtrl.text.trim(),
-                          hostname: '${_serverNameCtrl.text.trim().toLowerCase()}.datacenter.cloud',
-                          ipAddress: '198.51.100.${20 + (DateTime.now().millisecond % 80)}',
-                          ipv6Address: '2001:db8:85a3::8a2e:370:${DateTime.now().second}',
-                          dataCenterId: 'dc-001',
-                          dataCenterName: _selectedDataCenter,
-                          location: 'Chennai, India',
-                          status: _selectedStatus.toLowerCase() == 'active' ? 'running' : 'maintenance',
-                          os: 'Ubuntu 24.04 LTS',
-                          cpuUsagePercent: 18.5,
-                          cpuCores: cores,
-                          cpuModel: _processorCtrl.text.trim(),
-                          ramUsagePercent: 34.0,
-                          ramTotalGb: 64.0,
-                          ramUsedGb: 21.8,
-                          storageUsagePercent: 28.0,
-                          storageTotalGb: 1000.0,
-                          storageUsedGb: 280.0,
-                          networkUsageMbps: 120.0,
-                          networkInMbps: 75.0,
-                          networkOutMbps: 45.0,
-                          uptimeSeconds: 3600,
-                          healthStatus: 'healthy',
-                          tags: ['production', _selectedServerType],
-                        );
-                        ref.read(serverControllerProvider.notifier).addServer(newServer);
-                        context.showSnackBar('Server ${_serverNameCtrl.text} configured and added!');
-                      },
+                      text: _isSavingServer
+                          ? 'Saving...'
+                          : (_editingServer != null ? 'Save Configuration' : 'Save Configuration'),
+                      isLoading: _isSavingServer,
+                      onPressed: _handleSaveServer,
                     ),
                   ),
                 ],
@@ -461,6 +663,87 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         const SizedBox(height: 24),
       ],
     );
+  }
+
+  Future<void> _handleSaveServer() async {
+    final srvName = _serverNameCtrl.text.trim();
+    final procName = _processorCtrl.text.trim();
+    final cores = int.tryParse(_coresCtrl.text.trim()) ?? 0;
+    final threads = int.tryParse(_threadsCtrl.text.trim()) ?? 0;
+    final mac = _macAddressCtrl.text.trim();
+
+    setState(() => _isSavingServer = true);
+    try {
+      final dcState = ref.read(dataCenterControllerProvider);
+      final dcList = dcState.dataCenters.value ?? [];
+      final dcName = _getDataCenterName(_selectedDataCenterId, dcList);
+
+      if (_editingServer != null) {
+        // PUT /api/server-details/{id}
+        final updated = _editingServer!.copyWith(
+          name: srvName.isEmpty ? 'Unnamed Server' : srvName,
+          cpuModel: procName,
+          cpuCores: cores,
+          threadCount: threads,
+          macAddress: mac,
+          serverType: _selectedServerType,
+          status: _selectedStatus,
+          dataCenterId: _selectedDataCenterId ?? '',
+          dataCenterName: dcName,
+        );
+        await ref.read(serverControllerProvider.notifier).updateServer(updated);
+        setState(() => _resetServerForm());
+        if (mounted) {
+          context.showSnackBar('Server "$srvName" updated successfully!');
+        }
+      } else {
+        // POST /api/server-details
+        final newServer = ServerModel(
+          id: 'srv-${DateTime.now().millisecondsSinceEpoch}',
+          name: srvName.isEmpty ? 'Unnamed Server' : srvName,
+          hostname: srvName.isNotEmpty
+              ? '${srvName.toLowerCase().replaceAll(' ', '-')}.managed.cloud'
+              : 'unnamed.managed.cloud',
+          ipAddress: mac.contains('.') ? mac : '10.0.0.${DateTime.now().millisecond % 250}',
+          ipv6Address: '',
+          dataCenterId: _selectedDataCenterId ?? '',
+          dataCenterName: dcName,
+          location: dcName.isNotEmpty ? dcName : 'India',
+          status: _selectedStatus,
+          serverType: _selectedServerType,
+          os: 'Ubuntu 24.04 LTS',
+          cpuUsagePercent: 0.0,
+          cpuCores: cores,
+          threadCount: threads,
+          cpuModel: procName,
+          macAddress: mac,
+          ramUsagePercent: 0.0,
+          ramTotalGb: 64.0,
+          ramUsedGb: 0.0,
+          storageUsagePercent: 0.0,
+          storageTotalGb: 1000.0,
+          storageUsedGb: 0.0,
+          networkUsageMbps: 0.0,
+          networkInMbps: 0.0,
+          networkOutMbps: 0.0,
+          uptimeSeconds: 0,
+          healthStatus: 'healthy',
+        );
+        await ref.read(serverControllerProvider.notifier).addServer(newServer);
+        setState(() => _resetServerForm());
+        if (mounted) {
+          context.showSnackBar('Server "$srvName" created successfully!');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Failed to save server: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingServer = false);
+      }
+    }
   }
 
   Widget _buildDropdownField({
@@ -563,17 +846,19 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 ),
               ),
               IconButton(
+                tooltip: 'View Server Details',
                 icon: const Icon(Icons.remove_red_eye_outlined, size: 18),
-                onPressed: () => context.push(RouteNames.serverDetails, extra: srv),
+                onPressed: () => _showServerConfigDialog(
+                  context,
+                  isDark,
+                  server: srv,
+                  isEdit: false,
+                ),
               ),
               IconButton(
+                tooltip: 'Edit Server',
                 icon: const Icon(Icons.edit_outlined, size: 18),
-                onPressed: () {
-                  _serverNameCtrl.text = srv.name;
-                  _processorCtrl.text = srv.cpuModel;
-                  _coresCtrl.text = '${srv.cpuCores}';
-                  context.showSnackBar('Editing server ${srv.name}');
-                },
+                onPressed: () => _editServer(srv),
               ),
             ],
           ),
@@ -620,105 +905,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     );
   }
 
-  List<Widget> _getSampleCards(bool isDark) {
-    return [
-      _buildSampleServerTile('WaytoCloud...', 'Rack Server', 'Active', isDark),
-      _buildSampleServerTile('cloud-134bd1...', 'Rack Server', 'Active', isDark),
-      _buildSampleServerTile('node256', 'Rack Server', 'Active', isDark),
-      _buildSampleServerTile('akasha', 'Rack Server', 'Active', isDark),
-    ];
-  }
 
-  Widget _buildSampleServerTile(String name, String type, String status, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.surfaceDark : const Color(0xFFEEF2FF),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Center(
-                  child: Icon(Icons.dns_rounded, color: Color(0xFF4F46E5), size: 20),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.inventory_2_outlined, size: 12, color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8)),
-                        const SizedBox(width: 4),
-                        Text(type, style: TextStyle(fontSize: 11, color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B))),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  _showServerConfigDialog(context, isDark, isEdit: false, name: name.replaceAll('...', ''), type: type, status: status);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Icon(Icons.remove_red_eye_outlined, size: 18, color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B)),
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  _showServerConfigDialog(context, isDark, isEdit: true, name: name.replaceAll('...', ''), type: type, status: status);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Icon(Icons.edit_outlined, size: 18, color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B)),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8))),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.circle, size: 6, color: Color(0xFF16A34A)),
-                    const SizedBox(width: 4),
-                    Text(status, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF16A34A))),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
   // 2. Configured Nodes Fleet List Tab
   // ignore: unused_element
@@ -900,251 +1087,910 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     );
   }
 
-  // 3. Add Storage Tab (Photo 3)
-  Widget _buildAddStorageTab(BuildContext context, bool isDark) {
-    List<int> storageList = [];
-    int storageCounter = 1;
+  // 3. Add Storage Tab (Matches Screenshot 2)
+  double _calculateStoragePool() {
+    double total = 0.0;
+    for (final item in _storageItems) {
+      final val = double.tryParse(item.capacityCtrl.text.trim()) ?? 0.0;
+      total += val;
+    }
+    return total;
+  }
 
-    return StatefulBuilder(
-      builder: (context, setState) {
-        return ListView(
-          padding: AppSpacing.screenPadding,
-          children: [
-            Text(
-              'Add Storage',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Deploy and configure storage for your infrastructure.',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.cardDark : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.dns_outlined, color: Color(0xFF4F46E5), size: 20),
-                        const SizedBox(width: 12),
-                        Text('Node #1 - Storage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-                        const Spacer(),
-                        OutlinedButton.icon(
-                          onPressed: () => setState(() => storageList.add(storageCounter++)),
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('+ Add Storage'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF6366F1),
-                            side: const BorderSide(color: Color(0xFFE0E7FF)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          ),
-                        ),
-                      ],
+  Widget _buildAddStorageTab(BuildContext context, bool isDark) {
+    final serverCount = ref.watch(serverControllerProvider).servers.value?.length ?? 1;
+
+    return ListView(
+      padding: AppSpacing.screenPadding,
+      children: [
+        Text(
+          'Add Storage',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Deploy and configure storage for your infrastructure.',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Node #1 - Storage Card
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.dns_outlined, color: Color(0xFF4F46E5), size: 20),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Node #1 - Storage',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
                     ),
-                  ),
-                  if (storageList.isNotEmpty) ...[
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          ...storageList.map((id) => Padding(
-                            padding: const EdgeInsets.only(bottom: 24.0),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(child: _buildRamInput('Name', hint: '', isDark: isDark)),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildRamInput('Type', hint: 'SSD', isDark: isDark, suffix: const Icon(Icons.keyboard_arrow_down, size: 16))),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildRamInput('Capacity (TB)', hint: '', isDark: isDark)),
-                                const SizedBox(width: 16),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 24.0),
-                                  child: InkWell(
-                                    onTap: () => setState(() => storageList.remove(id)),
-                                    child: const Icon(Icons.cancel, color: Color(0xFFEF4444), size: 20),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )),
-                          Container(
-                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            alignment: Alignment.centerRight,
-                            child: const Text(
-                              'Storage Array Pool: 0 TB Active',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF6366F1)),
-                            ),
-                          ),
-                        ],
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _storageItems.add(_StorageItem()));
+                      },
+                      icon: const Icon(Icons.add, size: 14),
+                      label: const Text('+ Add Storage'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF6366F1),
+                        side: const BorderSide(color: Color(0xFFE0E7FF)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildAddNetworkTab(BuildContext context, bool isDark) {
-    List<int> ipList = [1];
-    int ipCounter = 2;
-
-    return StatefulBuilder(
-      builder: (context, setState) {
-        return ListView(
-          padding: AppSpacing.screenPadding,
-          children: [
-            Text(
-              'ISP & Network Management',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Manage internet providers, broadband lines, and network details for your infrastructure.',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.cardDark : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.wifi, color: Color(0xFF4F46E5), size: 20),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text('Network Configuration', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: isDark ? Colors.white : const Color(0xFF0F172A)), overflow: TextOverflow.ellipsis)),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Flexible(child: Text('+ Add Connection', overflow: TextOverflow.ellipsis)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF6366F1),
-                            side: const BorderSide(color: Color(0xFFE0E7FF)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(child: _buildRamInput('Assigned Data Center *', hint: 'Select Data Center...', isDark: isDark, suffix: const Icon(Icons.keyboard_arrow_down, size: 16))),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildRamInput('Server *', hint: 'Select Server...', isDark: isDark, suffix: const Icon(Icons.keyboard_arrow_down, size: 16))),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildRamInput('Network Provider *', hint: 'Select ISP...', isDark: isDark, suffix: const Icon(Icons.keyboard_arrow_down, size: 16))),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(child: _buildRamInput('Network Name *', hint: 'e.g. Office Fiber Line', isDark: isDark)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildRamInput('Connection Type *', hint: 'Select Type...', isDark: isDark, suffix: const Icon(Icons.keyboard_arrow_down, size: 16))),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildRamInput('Bandwidth *', hint: 'e.g. 100 Mbps, 1 Gbps', isDark: isDark)),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        ...ipList.map((id) => Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: _buildRamInput('IPv4${id > 1 ? ' #$id' : ''}', hint: 'e.g. 192.168.1.1', isDark: isDark)),
-                              const SizedBox(width: 16),
-                              Expanded(child: _buildRamInput('IPv6${id > 1 ? ' #$id' : ''}', hint: 'e.g. 2001:0db8::', isDark: isDark)),
-                              if (id > 1) ...[
-                                const SizedBox(width: 16),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 24.0),
-                                  child: InkWell(
-                                    onTap: () => setState(() => ipList.remove(id)),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(color: const Color(0xFFFEF2F2), borderRadius: BorderRadius.circular(4)),
-                                      child: const Icon(Icons.close, color: Color(0xFFEF4444), size: 16),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        )),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: OutlinedButton.icon(
-                            onPressed: () => setState(() => ipList.add(ipCounter++)),
-                            icon: const Icon(Icons.add, size: 14),
-                            label: const Text('+ Add IPs'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF6366F1),
-                              side: const BorderSide(color: Color(0xFFE0E7FF)),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_storageItems.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(
+                          child: Text(
+                            'Click "+ Add Storage" to configure storage disks.',
+                            style: TextStyle(
+                              color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
                             ),
                           ),
                         ),
-                      ],
+                      )
+                    else
+                      ..._storageItems.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final item = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 24.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Name
+                              Expanded(
+                                flex: 3,
+                                child: _buildStorageInputField(
+                                  label: 'Name',
+                                  hint: 'e.g. SSD Vol ${idx + 1}',
+                                  controller: item.nameCtrl,
+                                  isDark: isDark,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // Type
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Type',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      height: 40,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: isDark ? AppColors.surfaceDark : Colors.white,
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: item.type,
+                                          isExpanded: true,
+                                          icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                          dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                          ),
+                                          items: ['SSD', 'HDD', 'NVMe', 'Hybrid'].map((t) {
+                                            return DropdownMenuItem<String>(value: t, child: Text(t));
+                                          }).toList(),
+                                          onChanged: (val) {
+                                            if (val != null) setState(() => item.type = val);
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // Capacity (TB)
+                              Expanded(
+                                flex: 3,
+                                child: _buildStorageInputField(
+                                  label: 'Capacity (TB)',
+                                  hint: 'e.g. 2',
+                                  controller: item.capacityCtrl,
+                                  isDark: isDark,
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // Delete Button
+                              Padding(
+                                padding: const EdgeInsets.only(top: 24.0),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() => _storageItems.removeAt(idx));
+                                  },
+                                  child: const Icon(
+                                    Icons.cancel,
+                                    color: Color(0xFFEF4444),
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    // Summary pool bar matching Screenshot 2
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Storage Array Pool: ${_calculateStoragePool().toStringAsFixed(_calculateStoragePool() % 1 == 0 ? 0 : 1)} TB Active',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: Color(0xFF6366F1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Bottom Action Bar
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.cardDark : Colors.white,
+            borderRadius: AppRadius.borderLg,
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            ),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Last saved: Just now',
+                    style: AppTextStyles.bodySmall(isDark).copyWith(
+                      color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                    ),
+                  ),
+                  Text(
+                    '$serverCount Servers Configured',
+                    style: AppTextStyles.bodySmall(isDark).copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-        );
-      },
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppOutlinedButton(
+                      text: 'Discard Changes',
+                      onPressed: () {
+                        setState(() {
+                          _storageItems.clear();
+                          _storageItems.add(_StorageItem());
+                        });
+                        context.showSnackBar('Storage configuration reset');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: AppButton(
+                      text: 'Save Configuration',
+                      onPressed: () {
+                        context.showSnackBar('Storage configuration saved successfully!');
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
-  void _showServerConfigDialog(BuildContext context, bool isDark, {required bool isEdit, required String name, required String type, required String status}) {
+
+  // 4. ISP & Network Management Tab (Matches Screenshot 3)
+  Widget _buildAddNetworkTab(BuildContext context, bool isDark) {
+    final dcState = ref.watch(dataCenterControllerProvider);
+    final dcList = dcState.dataCenters.value ?? [];
+    final serverState = ref.watch(serverControllerProvider);
+    final serverList = serverState.servers.value ?? [];
+    final networkConnections = serverState.networkConnections.value ?? [];
+
+    return ListView(
+      padding: AppSpacing.screenPadding,
+      children: [
+        Text(
+          'ISP & Network Management',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Manage internet providers, broadband lines, and network details for your infrastructure.',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Network Configuration Card
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.wifi, color: Color(0xFF4F46E5), size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Network Configuration',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _networkNameCtrl.clear();
+                          _bandwidthCtrl.clear();
+                          _ipRows.clear();
+                          _ipRows.add(_IpRow());
+                        });
+                        context.showSnackBar('Connection form cleared');
+                      },
+                      icon: const Icon(Icons.add, size: 14),
+                      label: const Flexible(child: Text('+ Add Connection', overflow: TextOverflow.ellipsis)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF6366F1),
+                        side: const BorderSide(color: Color(0xFFE0E7FF)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Row 1: Assigned Data Center, Server, Network Provider
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Assigned Data Center
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Assigned Data Center *',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                height: 40,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDark ? AppColors.surfaceDark : Colors.white,
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String?>(
+                                    value: dcList.any((d) => d.id == _selectedNetworkDcId)
+                                        ? _selectedNetworkDcId
+                                        : null,
+                                    hint: Text(
+                                      'Select Data Center...',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                                      ),
+                                    ),
+                                    isExpanded: true,
+                                    icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                    dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                    ),
+                                    items: [
+                                      const DropdownMenuItem<String?>(
+                                        value: null,
+                                        child: Text('Select Data Center...'),
+                                      ),
+                                      ...dcList.map((dc) => DropdownMenuItem<String?>(
+                                            value: dc.id,
+                                            child: Text(dc.name, overflow: TextOverflow.ellipsis),
+                                          )),
+                                    ],
+                                    onChanged: (val) => setState(() => _selectedNetworkDcId = val),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Server
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Server *',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                height: 40,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDark ? AppColors.surfaceDark : Colors.white,
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String?>(
+                                    value: serverList.any((s) => s.id == _selectedNetworkServerId)
+                                        ? _selectedNetworkServerId
+                                        : null,
+                                    hint: Text(
+                                      'Select Server...',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                                      ),
+                                    ),
+                                    isExpanded: true,
+                                    icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                    dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                    ),
+                                    items: [
+                                      const DropdownMenuItem<String?>(
+                                        value: null,
+                                        child: Text('Select Server...'),
+                                      ),
+                                      ...serverList.map((srv) => DropdownMenuItem<String?>(
+                                            value: srv.id,
+                                            child: Text(srv.name, overflow: TextOverflow.ellipsis),
+                                          )),
+                                    ],
+                                    onChanged: (val) => setState(() => _selectedNetworkServerId = val),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Network Provider
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Network Provider *',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                height: 40,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDark ? AppColors.surfaceDark : Colors.white,
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _selectedNetworkProvider,
+                                    isExpanded: true,
+                                    icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                    dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                    ),
+                                    items: _networkProviders.map((p) {
+                                      return DropdownMenuItem<String>(value: p, child: Text(p));
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) setState(() => _selectedNetworkProvider = val);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Row 2: Network Name, Connection Type, Bandwidth
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _buildStorageInputField(
+                            label: 'Network Name *',
+                            hint: 'e.g. gggh',
+                            controller: _networkNameCtrl,
+                            isDark: isDark,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Connection Type *',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                height: 40,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDark ? AppColors.surfaceDark : Colors.white,
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _selectedConnectionType,
+                                    isExpanded: true,
+                                    icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                    dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                    ),
+                                    items: _connectionTypes.map((t) {
+                                      return DropdownMenuItem<String>(value: t, child: Text(t));
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) setState(() => _selectedConnectionType = val);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildStorageInputField(
+                            label: 'Bandwidth *',
+                            hint: 'e.g. 122',
+                            controller: _bandwidthCtrl,
+                            isDark: isDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Row 3: Dynamic IP rows
+                    ..._ipRows.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final ipRow = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildStorageInputField(
+                                label: 'IPv4${idx > 0 ? ' #${idx + 1}' : ''}',
+                                hint: 'e.g. 122.233.44',
+                                controller: ipRow.ipv4Ctrl,
+                                isDark: isDark,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildStorageInputField(
+                                label: 'IPv6${idx > 0 ? ' #${idx + 1}' : ''}',
+                                hint: 'e.g. 7272:uur:990',
+                                controller: ipRow.ipv6Ctrl,
+                                isDark: isDark,
+                              ),
+                            ),
+                            if (_ipRows.length > 1) ...[
+                              const SizedBox(width: 16),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 24.0),
+                                child: InkWell(
+                                  onTap: () => setState(() => _ipRows.removeAt(idx)),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFEF2F2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(Icons.close, color: Color(0xFFEF4444), size: 16),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: () => setState(() => _ipRows.add(_IpRow())),
+                        icon: const Icon(Icons.add, size: 14),
+                        label: const Text('+ Add IPs'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF6366F1),
+                          side: const BorderSide(color: Color(0xFFE0E7FF)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Configured Network Connections list if any
+        if (networkConnections.isNotEmpty) ...[
+          Text(
+            'Configured Network Connections (${networkConnections.length})',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...networkConnections.map((conn) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.cardDark : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi, color: Color(0xFF6366F1), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${conn.networkName} (${conn.networkProvider})',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        Text(
+                          '${conn.connectionType} • ${conn.bandwidth}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Active',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF16A34A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 10),
+        ],
+
+        // Bottom Action Bar: Discard / Save Configuration
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.cardDark : Colors.white,
+            borderRadius: AppRadius.borderLg,
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            ),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Last saved: Just now',
+                    style: AppTextStyles.bodySmall(isDark).copyWith(
+                      color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                    ),
+                  ),
+                  Text(
+                    '${networkConnections.length} Connections Configured',
+                    style: AppTextStyles.bodySmall(isDark).copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppOutlinedButton(
+                      text: 'Discard Changes',
+                      onPressed: () {
+                        setState(() {
+                          _networkNameCtrl.text = 'gggh';
+                          _bandwidthCtrl.text = '122';
+                          _selectedNetworkProvider = 'Jio';
+                          _selectedConnectionType = '5G';
+                          _ipRows.clear();
+                          _ipRows.add(_IpRow(ipv4: '122.233.44', ipv6: '7272:uur:990'));
+                        });
+                        context.showSnackBar('Network form reset');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: AppButton(
+                      text: _isSavingNetwork ? 'Saving...' : 'Save Configuration',
+                      isLoading: _isSavingNetwork,
+                      onPressed: _handleSaveNetworkConnection,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Future<void> _handleSaveNetworkConnection() async {
+    final netName = _networkNameCtrl.text.trim();
+    if (netName.isEmpty) {
+      context.showSnackBar('Please enter a Network Name');
+      return;
+    }
+
+    setState(() => _isSavingNetwork = true);
+    try {
+      final ipsList = _ipRows
+          .map((row) => {
+                'ipv4': row.ipv4Ctrl.text.trim(),
+                'ipv6': row.ipv6Ctrl.text.trim(),
+              })
+          .where((m) => m['ipv4']!.isNotEmpty || m['ipv6']!.isNotEmpty)
+          .toList();
+
+      final conn = ServerNetworkConnectionModel(
+        id: 'net-${DateTime.now().millisecondsSinceEpoch}',
+        dataCenterId: _selectedNetworkDcId,
+        serverId: _selectedNetworkServerId,
+        networkProvider: _selectedNetworkProvider,
+        networkName: netName,
+        connectionType: _selectedConnectionType,
+        bandwidth: _bandwidthCtrl.text.trim(),
+        ips: ipsList,
+      );
+
+      await ref.read(serverControllerProvider.notifier).saveNetworkConnection(conn);
+      if (mounted) {
+        context.showSnackBar('Network configuration saved successfully!');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Failed to save network configuration: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingNetwork = false);
+      }
+    }
+  }
+
+  Widget _buildStorageInputField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required bool isDark,
+    TextInputType keyboardType = TextInputType.text,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 40,
+          decoration: BoxDecoration(
+            border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+            borderRadius: BorderRadius.circular(8),
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+          ),
+          child: TextFormField(
+            controller: controller,
+            keyboardType: keyboardType,
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: InputBorder.none,
+            ),
+            style: TextStyle(
+              fontSize: 13.5,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showServerConfigDialog(
+    BuildContext context,
+    bool isDark, {
+    required ServerModel server,
+    required bool isEdit,
+  }) {
     showDialog(
       context: context,
       builder: (context) {
@@ -1197,31 +2043,38 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 // Form Fields
                 Row(
                   children: [
-                    Expanded(child: _buildDialogField('Data Center', 'Circuit Point', isEdit, isDark)),
+                    Expanded(child: _buildDialogField('Data Center', server.dataCenterName.isNotEmpty ? server.dataCenterName : 'Circuit Point', isEdit, isDark)),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildDialogField('Server Name', name, isEdit, isDark)),
+                    Expanded(child: _buildDialogField('Server Name', server.name, isEdit, isDark)),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: _buildDialogField('Server Type', type, isEdit, isDark)),
+                    Expanded(child: _buildDialogField('Server Type', server.serverType, isEdit, isDark)),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildDialogField('Processor Name', 'E5-2680 v4', isEdit, isDark)),
+                    Expanded(child: _buildDialogField('Processor Name', server.cpuModel, isEdit, isDark)),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: _buildDialogField('CPU Cores', isEdit ? 'e.g. 16' : '', isEdit, isDark, isEmpty: true)),
+                    Expanded(child: _buildDialogField('CPU Cores', '${server.cpuCores}', isEdit, isDark)),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildDialogField('Threads', isEdit ? 'e.g. 32' : '', isEdit, isDark, isEmpty: true)),
+                    Expanded(child: _buildDialogField('Threads', '${server.threadCount}', isEdit, isDark)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Server Status', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B))),
+                          Text(
+                            'Server Status',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                            ),
+                          ),
                           const SizedBox(height: 6),
                           Container(
                             height: 40,
@@ -1233,20 +2086,16 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                             alignment: Alignment.centerLeft,
                             child: Row(
                               children: [
-                                if (!isEdit) ...[
-                                  const Icon(Icons.circle, size: 8, color: Color(0xFF10B981)),
-                                  const SizedBox(width: 6),
-                                ],
+                                const Icon(Icons.circle, size: 8, color: Color(0xFF10B981)),
+                                const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    status,
+                                    server.status,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 13,
-                                      color: isEdit
-                                          ? (isDark ? Colors.white : const Color(0xFF0F172A))
-                                          : const Color(0xFF10B981),
-                                      fontWeight: isEdit ? FontWeight.normal : FontWeight.w600,
+                                      color: Color(0xFF10B981),
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
@@ -1261,7 +2110,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: _buildDialogField('MAC Address', isEdit ? '00:00:00:00:00:00' : 'N/A', isEdit, isDark, isEmpty: isEdit)),
+                    Expanded(child: _buildDialogField('MAC Address', server.macAddress ?? 'N/A', isEdit, isDark)),
                     const SizedBox(width: 16),
                     const Spacer(),
                   ],
@@ -1275,26 +2124,20 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                     OutlinedButton(
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0F172A),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        foregroundColor: isDark ? Colors.white : const Color(0xFF0F172A),
+                        side: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       ),
-                      child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
+                      child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
                     ),
                     ElevatedButton.icon(
                       onPressed: () {
-                        if (isEdit) {
-                          setState(() {
-                            _serverNameCtrl.text = name;
-                            _selectedServerType = type;
-                            _selectedStatus = status;
-                          });
-                        }
                         Navigator.pop(context);
+                        _editServer(server);
                       },
-                      icon: isEdit ? const SizedBox.shrink() : const Icon(Icons.edit, size: 16),
-                      label: Flexible(child: Text(isEdit ? 'Save Changes' : 'Edit Configuration', overflow: TextOverflow.ellipsis)),
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Edit Configuration'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
@@ -1366,7 +2209,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   style: TextStyle(fontSize: 13.5, color: isDark ? Colors.white : const Color(0xFF0F172A)),
                 ),
               ),
-              if (suffix != null) suffix,
+              ?suffix,
             ],
           ),
         ),
