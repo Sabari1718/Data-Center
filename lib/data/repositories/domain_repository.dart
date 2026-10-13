@@ -16,6 +16,7 @@ class DomainRepository {
   final List<DomainExtensionModel> _extensions = [];
   final List<SubdomainModel> _subdomains = [];
   final List<String> _registrars = [];
+  final List<DomainRegistrarModel> _registrarsList = [];
 
   DomainRepository({required this.apiClient});
 
@@ -23,6 +24,7 @@ class DomainRepository {
   List<DomainExtensionModel> get currentExtensions => List.unmodifiable(_extensions);
   List<SubdomainModel> get currentSubdomains => List.unmodifiable(_subdomains);
   List<String> get currentRegistrars => List.unmodifiable(_registrars);
+  List<DomainRegistrarModel> get currentRegistrarsList => List.unmodifiable(_registrarsList);
 
   Future<List<DomainModel>> getDomains({
     String? searchQuery,
@@ -119,31 +121,94 @@ class DomainRepository {
     }
   }
 
-  Future<List<String>> getDomainRegistrars() async {
+  Future<DomainExtensionModel> addExtension(String extension) async {
+    try {
+      final formatted = extension.startsWith('.') ? extension : '.$extension';
+      final response = await apiClient.post(
+        ApiEndpoints.domainExtensions,
+        data: {'extension': formatted},
+      );
+      final body = response.data;
+      if (body is Map && body['data'] != null) {
+        final created = DomainExtensionModel.fromJson(body['data'] as Map<String, dynamic>);
+        _extensions.insert(0, created);
+        return created;
+      }
+      throw Exception(body?['message'] ?? 'Failed to create domain extension');
+    } catch (e) {
+      log('Failed to add domain extension via API: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<DomainRegistrarModel>> getDomainRegistrarsList() async {
     try {
       final response = await apiClient.get(ApiEndpoints.domainRegistrars);
       final body = response.data;
       List<dynamic> rawList = [];
       if (body is Map && body['data'] is List) {
         rawList = body['data'] as List;
+      } else if (body is List) {
+        rawList = body;
       }
+
+      final items = rawList
+          .map((item) => DomainRegistrarModel.fromJson(item as Map<String, dynamic>))
+          .toList();
+
+      _registrarsList.clear();
+      _registrarsList.addAll(items);
 
       _registrars.clear();
-      for (final item in rawList) {
-        if (item is String) {
-          _registrars.add(item);
-        } else if (item is Map && item['name'] != null) {
-          _registrars.add(item['name'].toString());
-        }
+      for (final r in items) {
+        _registrars.add(r.registrarName);
       }
+      return _registrarsList;
     } catch (e) {
       log('Failed to fetch domain registrars from API: $e');
+      return _registrarsList;
     }
+  }
 
+  Future<List<String>> getDomainRegistrars() async {
+    await getDomainRegistrarsList();
     if (_registrars.isEmpty) {
-      _registrars.addAll(const ['godaddy', 'namecheap', 'cloudflare', 'google domains']);
+      _registrars.addAll(const ['data', 'godaddy', 'namecheap', 'cloudflare', 'google domains']);
     }
     return _registrars;
+  }
+
+  Future<DomainRegistrarModel> addDomainRegistrar(String name) async {
+    try {
+      final response = await apiClient.post(
+        ApiEndpoints.domainRegistrars,
+        data: {'registrar_name': name},
+      );
+      final body = response.data;
+      if (body is Map && body['data'] != null) {
+        final created = DomainRegistrarModel.fromJson(body['data'] as Map<String, dynamic>);
+        _registrarsList.insert(0, created);
+        if (!_registrars.contains(created.registrarName)) {
+          _registrars.insert(0, created.registrarName);
+        }
+        return created;
+      }
+      throw Exception(body?['message'] ?? 'Failed to add domain registrar');
+    } catch (e) {
+      log('Failed to add domain registrar via API: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteDomainRegistrar(int id) async {
+    try {
+      await apiClient.delete('${ApiEndpoints.domainRegistrars}/$id');
+      _registrarsList.removeWhere((r) => r.id == id);
+      _registrars.removeWhere((name) => !_registrarsList.any((r) => r.registrarName == name));
+    } catch (e) {
+      log('Failed to delete domain registrar $id via API: $e');
+      rethrow;
+    }
   }
 
   Future<DomainModel> addDomain(Map<String, dynamic> payload) async {

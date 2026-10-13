@@ -229,6 +229,20 @@ class DomainController extends Notifier<DomainState> {
     }
   }
 
+  Future<DomainExtensionModel?> addExtension(String extension) async {
+    state = state.copyWith(isLoadingAction: true);
+    try {
+      final repo = ref.read(domainRepositoryProvider);
+      final created = await repo.addExtension(extension);
+      await _loadExtensions();
+      state = state.copyWith(isLoadingAction: false);
+      return created;
+    } catch (e) {
+      state = state.copyWith(isLoadingAction: false);
+      return null;
+    }
+  }
+
   Future<void> refresh() async {
     await loadAll();
   }

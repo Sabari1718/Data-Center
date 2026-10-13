@@ -169,17 +169,25 @@ class ServerModel {
   }
 
   Map<String, dynamic> toApiJson() {
+    String apiStatus;
+    final s = status.trim().toLowerCase();
+    if (s == 'inactive') {
+      apiStatus = 'Inactive';
+    } else {
+      apiStatus = 'Active';
+    }
+
     return {
       'data_center_id': dataCenterId.isNotEmpty
           ? (int.tryParse(dataCenterId) ?? dataCenterId)
-          : '',
-      'server_name': name,
+          : null,
+      'server_name': name.isEmpty ? 'Unnamed Server' : name,
       'server_type': serverType,
       'processor_name': cpuModel,
       'cpu_cores': cpuCores,
       'thread_count': threadCount,
       'mac_address': macAddress ?? '',
-      'server_status': status,
+      'server_status': apiStatus,
     };
   }
 

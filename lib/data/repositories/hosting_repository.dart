@@ -239,6 +239,8 @@ class HostingRepository {
       List<dynamic> rawList = [];
       if (body is Map && body['data'] is List) {
         rawList = body['data'] as List;
+      } else if (body is List) {
+        rawList = body;
       }
 
       final items = rawList
@@ -259,6 +261,35 @@ class HostingRepository {
         ]);
       }
       return _hostingTypes;
+    }
+  }
+
+  Future<HostingTypeModel> addHostingType(String name) async {
+    try {
+      final response = await apiClient.post(
+        ApiEndpoints.hostingTypes,
+        data: {'hosting_type_name': name},
+      );
+      final body = response.data;
+      if (body is Map && body['data'] != null) {
+        final created = HostingTypeModel.fromJson(body['data'] as Map<String, dynamic>);
+        _hostingTypes.insert(0, created);
+        return created;
+      }
+      throw Exception(body?['message'] ?? 'Failed to add hosting type');
+    } catch (e) {
+      log('Failed to add hosting type via API: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteHostingType(int id) async {
+    try {
+      await apiClient.delete('${ApiEndpoints.hostingTypes}/$id');
+      _hostingTypes.removeWhere((item) => item.id == id);
+    } catch (e) {
+      log('Failed to delete hosting type $id via API: $e');
+      rethrow;
     }
   }
 

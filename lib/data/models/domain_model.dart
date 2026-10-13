@@ -222,6 +222,51 @@ class DomainExtensionModel {
   };
 }
 
+class DomainRegistrarModel {
+  final int id;
+  final String registrarName;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  const DomainRegistrarModel({
+    required this.id,
+    required this.registrarName,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory DomainRegistrarModel.fromJson(Map<String, dynamic> json) {
+    return DomainRegistrarModel(
+      id: json['id'] is int ? json['id'] as int : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      registrarName: json['registrar_name']?.toString() ?? json['name']?.toString() ?? '',
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'registrar_name': registrarName,
+    'created_at': createdAt?.toIso8601String(),
+    'updated_at': updatedAt?.toIso8601String(),
+  };
+
+  DomainRegistrarModel copyWith({
+    int? id,
+    String? registrarName,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return DomainRegistrarModel(
+      id: id ?? this.id,
+      registrarName: registrarName ?? this.registrarName,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+
 class SubdomainModel {
   final dynamic id;
   final String subdomainId;

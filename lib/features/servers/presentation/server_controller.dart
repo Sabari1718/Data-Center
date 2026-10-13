@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/server_model.dart';
 import '../../../data/repositories/server_repository.dart';
@@ -40,13 +41,38 @@ final serverControllerProvider =
 });
 
 class ServerController extends Notifier<ServerState> {
+  Timer? _pollingTimer;
+
   @override
   ServerState build() {
     Future.microtask(() {
       _loadServers();
       _loadNetworkConnections();
+      _startPolling();
+    });
+    ref.onDispose(() {
+      _pollingTimer?.cancel();
     });
     return const ServerState(servers: AsyncValue.loading());
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _loadServersSilently();
+    });
+  }
+
+  Future<void> _loadServersSilently() async {
+    try {
+      final repo = ref.read(serverRepositoryProvider);
+      final list = await repo.getServers(
+        searchQuery: state.searchQuery,
+        statusFilter: state.statusFilter,
+        dataCenterFilter: state.dataCenterFilter,
+      );
+      state = state.copyWith(servers: AsyncValue.data(list));
+    } catch (_) {}
   }
 
   Future<void> _loadServers() async {
@@ -103,20 +129,29 @@ class ServerController extends Notifier<ServerState> {
 
   Future<void> addServer(ServerModel model) async {
     final repo = ref.read(serverRepositoryProvider);
-    await repo.addServer(model);
-    await _loadServers();
+    final created = await repo.addServer(model);
+    final currentList = state.servers.value ?? [];
+    state = state.copyWith(servers: AsyncValue.data([created, ...currentList]));
   }
 
   Future<void> updateServer(ServerModel model) async {
     final repo = ref.read(serverRepositoryProvider);
-    await repo.updateServer(model);
-    await _loadServers();
+    final updated = await repo.updateServer(model);
+    final currentList = state.servers.value ?? [];
+    final updatedList = currentList.map((s) => s.id == model.id ? updated : s).toList();
+    if (!updatedList.any((s) => s.id == model.id)) {
+      updatedList.add(updated);
+    }
+    state = state.copyWith(servers: AsyncValue.data(updatedList));
   }
 
   Future<void> deleteServer(String id) async {
     final repo = ref.read(serverRepositoryProvider);
     await repo.deleteServer(id);
-    await _loadServers();
+    final currentList = state.servers.value ?? [];
+    state = state.copyWith(
+      servers: AsyncValue.data(currentList.where((s) => s.id != id).toList()),
+    );
   }
 
   Future<void> saveNetworkConnection(ServerNetworkConnectionModel conn) async {

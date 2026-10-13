@@ -46,7 +46,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
   // Form state for Add Data Center
   final _dcNameController = TextEditingController();
   final _pinController = TextEditingController();
-  final _countryController = TextEditingController(text: 'India');
+  final _countryController = TextEditingController();
   final _zipController = TextEditingController();
   final _latController = TextEditingController();
   final _longController = TextEditingController();
@@ -1132,7 +1132,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
       _zipController.clear();
       _latController.clear();
       _longController.clear();
-      _countryController.text = 'India';
+      _countryController.clear();
       _resolvedLocation = null;
       _isActiveStatus = true;
     });
@@ -2092,7 +2092,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                           _locationMethod = 'Use PIN';
                           _pinController.text = dc.pincode ?? '';
                         }
-                        _countryController.text = dc.country.isNotEmpty ? dc.country : 'India';
+                        _countryController.text = dc.country;
                       });
                       if (dc.pincode != null && dc.pincode!.isNotEmpty) {
                         _handleSearchLocation(pincodeToSearch: dc.pincode);
@@ -2242,7 +2242,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                   OutlinedButton.icon(
                     onPressed: onAdd,
                     icon: const Icon(Icons.add, size: 16),
-                    label: Text(addBtnText),
+                    label: Text(addBtnText.startsWith('+') ? addBtnText.replaceFirst('+', '').trim() : addBtnText),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF4F46E5),
                       side: const BorderSide(color: Color(0xFFEEF2F6)),
@@ -2551,7 +2551,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
           isDark: isDark,
           titleIcon: Icons.view_in_ar_rounded,
           title: 'Software & Licensing',
-          addBtnText: '+ Add Software Stack',
+          addBtnText: 'Add Software Stack',
           onAdd: () {
             setState(() {
               _softwareStacks.add(_softwareIdCounter++);
@@ -2756,7 +2756,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
           isDark: isDark,
           titleIcon: Icons.bolt_rounded,
           title: 'Power & Cooling Configuration',
-          addBtnText: '+ Add Environment Config',
+          addBtnText: 'Add Environment Config',
           onAdd: () {
             setState(() {
               _powerConfigs.add(_powerIdCounter++);
@@ -2827,37 +2827,37 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                   _buildGridInput(
                     'UPS Capacity',
                     hint: 'e.g. 30 kVA',
-                    controller: _getController(_powerUpsControllers, id, '30 kVA'),
+                    controller: _getController(_powerUpsControllers, id),
                     isDark: isDark,
                   ),
                   _buildGridInput(
                     'Power Consumption (W)',
                     hint: 'e.g. 3200',
-                    controller: _getController(_powerConsumptionControllers, id, '3200'),
+                    controller: _getController(_powerConsumptionControllers, id),
                     isDark: isDark,
                   ),
                   _buildGridInput(
                     'Generator Backup',
                     hint: 'e.g. Diesel 50kVA Generator',
-                    controller: _getController(_powerGeneratorControllers, id, 'Diesel 50kVA'),
+                    controller: _getController(_powerGeneratorControllers, id),
                     isDark: isDark,
                   ),
                   _buildGridInput(
                     'Cooling Type',
                     hint: 'e.g. In-Row Liquid Chilled',
-                    controller: _getController(_powerCoolingTypeControllers, id, 'In-Row Liquid Chilled'),
+                    controller: _getController(_powerCoolingTypeControllers, id),
                     isDark: isDark,
                   ),
                   _buildGridInput(
                     'Rack Temp (°C)',
                     hint: 'e.g. 21',
-                    controller: _getController(_powerTempControllers, id, '21'),
+                    controller: _getController(_powerTempControllers, id),
                     isDark: isDark,
                   ),
                   _buildGridInput(
                     'PDU Details',
                     hint: 'e.g. APC Metered PDU 32A',
-                    controller: _getController(_powerPduControllers, id, 'APC Metered PDU 32A'),
+                    controller: _getController(_powerPduControllers, id),
                     isDark: isDark,
                   ),
                 ]),
@@ -3017,7 +3017,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
           isDark: isDark,
           titleIcon: Icons.dns_outlined,
           title: 'Storage Management',
-          addBtnText: '+ Add Storage Array',
+          addBtnText: 'Add Storage Array',
           onAdd: () {
             setState(() {
               _storageArrays.add(_storageIdCounter++);
@@ -3121,7 +3121,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
           isDark: isDark,
           titleIcon: Icons.shield_outlined,
           title: 'Security & Surveillance',
-          addBtnText: '+ Add Security Profile',
+          addBtnText: 'Add Security Profile',
           onAdd: () {
             setState(() {
               _securityProfiles.add(_securityIdCounter++);
@@ -3253,7 +3253,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
           isDark: isDark,
           titleIcon: Icons.table_rows_rounded,
           title: 'Rack Management',
-          addBtnText: '+ Add Rack Setup',
+          addBtnText: 'Add Rack Setup',
           onAdd: () {
             setState(() {
               _rackSetups.add(_rackIdCounter++);
@@ -3370,7 +3370,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
           isDark: isDark,
           titleIcon: Icons.wifi_rounded,
           title: 'Network Configuration',
-          addBtnText: '+ Add Connection',
+          addBtnText: 'Add Connection',
           onAdd: () {
             setState(() {
               int newId = _networkIdCounter++;
@@ -3421,7 +3421,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                     _buildGridInput(
                       'Network Name',
                       hint: 'e.g. Office Fiber Line',
-                      controller: _getController(_networkNameControllers, id, 'Primary Fiber Backbone'),
+                      controller: _getController(_networkNameControllers, id),
                       isDark: isDark,
                       isRequired: true,
                     ),
@@ -3436,7 +3436,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                     _buildGridInput(
                       'Bandwidth',
                       hint: 'e.g. 100 Mbps, 1 Gbps',
-                      controller: _getController(_networkBandwidthControllers, id, '1 Gbps'),
+                      controller: _getController(_networkBandwidthControllers, id),
                       isDark: isDark,
                       isRequired: true,
                     ),
@@ -3455,7 +3455,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                             child: _buildGridInput(
                               isFirst ? 'IPv4' : 'IPv4 #$ipId',
                               hint: 'e.g. 192.168.1.1',
-                              controller: _getIpController('ipv4_${id}_$ipId', isFirst ? '192.168.1.1' : ''),
+                              controller: _getIpController('ipv4_${id}_$ipId'),
                               isDark: isDark,
                             ),
                           ),
@@ -3464,7 +3464,7 @@ class _DataCenterScreenState extends ConsumerState<DataCenterScreen> {
                             child: _buildGridInput(
                               isFirst ? 'IPv6' : 'IPv6 #$ipId',
                               hint: 'e.g. 2001:0db8::',
-                              controller: _getIpController('ipv6_${id}_$ipId', isFirst ? '2001:0db8::1' : ''),
+                              controller: _getIpController('ipv6_${id}_$ipId'),
                               isDark: isDark,
                             ),
                           ),
@@ -3831,9 +3831,11 @@ class _ViewDataCenterDialogState extends State<_ViewDataCenterDialog> {
                       ),
                     ),
                     alignment: Alignment.centerLeft,
-                    child: const Text(
-                      '641062',
-                      style: TextStyle(
+                    child: Text(
+                      widget.dataCenter.pincode?.isNotEmpty == true
+                          ? widget.dataCenter.pincode!
+                          : '-',
+                      style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3869,7 +3871,7 @@ class _ViewDataCenterDialogState extends State<_ViewDataCenterDialog> {
                           ),
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            widget.dataCenter.country.isEmpty ? 'India' : widget.dataCenter.country,
+                            widget.dataCenter.country.isEmpty ? '-' : widget.dataCenter.country,
                             style: const TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
@@ -3904,9 +3906,11 @@ class _ViewDataCenterDialogState extends State<_ViewDataCenterDialog> {
                             ),
                           ),
                           alignment: Alignment.centerLeft,
-                          child: const Text(
-                            '641062',
-                            style: TextStyle(
+                          child: Text(
+                            widget.dataCenter.zipCode?.isNotEmpty == true
+                                ? widget.dataCenter.zipCode!
+                                : '-',
+                            style: const TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -3944,9 +3948,11 @@ class _ViewDataCenterDialogState extends State<_ViewDataCenterDialog> {
                             ),
                           ),
                           alignment: Alignment.centerLeft,
-                          child: const Text(
-                            '11.0168',
-                            style: TextStyle(
+                          child: Text(
+                            widget.dataCenter.latitude?.isNotEmpty == true
+                                ? widget.dataCenter.latitude!
+                                : '-',
+                            style: const TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -3980,9 +3986,11 @@ class _ViewDataCenterDialogState extends State<_ViewDataCenterDialog> {
                             ),
                           ),
                           alignment: Alignment.centerLeft,
-                          child: const Text(
-                            '76.9558',
-                            style: TextStyle(
+                          child: Text(
+                            widget.dataCenter.longitude?.isNotEmpty == true
+                                ? widget.dataCenter.longitude!
+                                : '-',
+                            style: const TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -4078,13 +4086,11 @@ class _EditDataCenterDialogState extends State<_EditDataCenterDialog> {
         : (widget.dataCenter.locationMethod == 'lat_long'
             ? 'Use Latitude & Longitude'
             : 'Use PIN');
-    _pinController = TextEditingController(text: widget.dataCenter.pincode ?? '641062');
-    _countryController = TextEditingController(
-      text: widget.dataCenter.country.isEmpty ? 'India' : widget.dataCenter.country,
-    );
-    _zipController = TextEditingController(text: widget.dataCenter.zipCode ?? '641062');
-    _latController = TextEditingController(text: widget.dataCenter.latitude ?? '11.0168');
-    _longController = TextEditingController(text: widget.dataCenter.longitude ?? '76.9558');
+    _pinController = TextEditingController(text: widget.dataCenter.pincode ?? '');
+    _countryController = TextEditingController(text: widget.dataCenter.country);
+    _zipController = TextEditingController(text: widget.dataCenter.zipCode ?? '');
+    _latController = TextEditingController(text: widget.dataCenter.latitude ?? '');
+    _longController = TextEditingController(text: widget.dataCenter.longitude ?? '');
   }
 
   @override

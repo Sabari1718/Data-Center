@@ -21,15 +21,14 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
   final _domainNameCtrl = TextEditingController();
   final _customExtCtrl = TextEditingController();
   final _purchaseDateCtrl = TextEditingController();
-  final _costCtrl = TextEditingController(text: '0.00');
+  final _costCtrl = TextEditingController();
 
   DateTime? _selectedPurchaseDate;
   int? _selectedExtensionId;
-  String _selectedExtensionName = '.com';
   int _selectedDurationYears = 1;
-  String _selectedRegistrar = 'godaddy';
+  String? _selectedRegistrar;
 
-  bool _whatsappSelected = true;
+  bool _whatsappSelected = false;
   bool _emailSelected = false;
   bool _messageSelected = false;
 
@@ -43,10 +42,6 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _selectedPurchaseDate = now;
-    _purchaseDateCtrl.text =
-        '${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}/${now.year}';
   }
 
   @override
@@ -64,8 +59,12 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
     setState(() {
       _domainNameCtrl.clear();
       _customExtCtrl.clear();
-      _costCtrl.text = '0.00';
-      _whatsappSelected = true;
+      _purchaseDateCtrl.clear();
+      _selectedPurchaseDate = null;
+      _costCtrl.clear();
+      _selectedExtensionId = null;
+      _selectedRegistrar = null;
+      _whatsappSelected = false;
       _emailSelected = false;
       _messageSelected = false;
     });
@@ -217,16 +216,6 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
     final domains = domainState.domains.asData?.value ?? [];
     final extensions = domainState.extensions.asData?.value ?? [];
     final subdomains = domainState.subdomains.asData?.value ?? [];
-
-    // Initialize defaults if needed
-    if (_selectedExtensionId == null && extensions.isNotEmpty) {
-      _selectedExtensionId = extensions.first.id;
-      _selectedExtensionName = extensions.first.extension;
-    }
-
-    if (_selectedPrimaryDomain == null && domains.isNotEmpty) {
-      _selectedPrimaryDomain = domains.first;
-    }
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
@@ -2350,7 +2339,9 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<int>(
-              value: _selectedExtensionId,
+              value: extensions.any((e) => e.id == _selectedExtensionId)
+                  ? _selectedExtensionId
+                  : null,
               hint: Text(
                 'Select Extension',
                 style: TextStyle(
@@ -2378,9 +2369,6 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                 if (val != null) {
                   setState(() {
                     _selectedExtensionId = val;
-                    final found =
-                        extensions.firstWhere((e) => e.id == val);
-                    _selectedExtensionName = found.extension;
                   });
                 }
               },
@@ -2441,19 +2429,44 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: InkWell(
-                  onTap: () {
+                  onTap: () async {
                     final txt = _customExtCtrl.text.trim();
-                    if (txt.isNotEmpty) {
-                      setState(() {
-                        _selectedExtensionName =
-                            txt.startsWith('.') ? txt : '.$txt';
-                      });
+                    if (txt.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Custom extension set to $_selectedExtensionName'),
-                          duration: const Duration(seconds: 1),
+                        const SnackBar(
+                          content: Text('Please enter an extension (e.g. .xyz)'),
+                          behavior: SnackBarBehavior.floating,
                         ),
                       );
+                      return;
+                    }
+                    final formatted = txt.startsWith('.') ? txt : '.$txt';
+                    final created = await ref
+                        .read(domainControllerProvider.notifier)
+                        .addExtension(formatted);
+                    if (mounted) {
+                      if (created != null) {
+                        setState(() {
+                          _selectedExtensionId = created.id;
+                          _customExtCtrl.clear();
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                'Domain extension "${created.extension}" created successfully'),
+                            backgroundColor: const Color(0xFF10B981),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Failed to create domain extension. Please try again.'),
+                            backgroundColor: Color(0xFFEF4444),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     }
                   },
                   child: const Text(
@@ -2613,7 +2626,7 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
             child: DropdownButton<String>(
               value: registrars.contains(_selectedRegistrar)
                   ? _selectedRegistrar
-                  : (registrars.isNotEmpty ? registrars.first : null),
+                  : null,
               hint: Text(
                 'Select Registrar Provider',
                 style: TextStyle(

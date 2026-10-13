@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+         import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/router/route_names.dart';
@@ -8,6 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/data_center_model.dart';
 import '../../../data/models/server_model.dart';
+import '../../../data/repositories/server_repository.dart';
 import '../../../shared/components/server_card.dart';
 import '../../../shared/extensions/context_extensions.dart';
 import '../../../shared/widgets/app_button.dart';
@@ -26,7 +27,7 @@ import 'server_controller.dart';
 class _StorageItem {
   final TextEditingController nameCtrl = TextEditingController();
   String type = 'SSD';
-  final TextEditingController capacityCtrl = TextEditingController(text: '0');
+  final TextEditingController capacityCtrl = TextEditingController(text: '');
 
   void dispose() {
     nameCtrl.dispose();
@@ -49,6 +50,36 @@ class _IpRow {
   }
 }
 
+class _RamModuleData {
+  final int id;
+  final TextEditingController sizeCtrl;
+  String unit;
+  String ramType;
+  final TextEditingController freqCtrl;
+  final TextEditingController voltCtrl;
+  final TextEditingController latencyCtrl;
+
+  _RamModuleData({
+    required this.id,
+    String size = '',
+    this.unit = 'GB',
+    this.ramType = 'DDR4',
+    String freq = '',
+    String volt = '',
+    String latency = '',
+  })  : sizeCtrl = TextEditingController(text: size),
+        freqCtrl = TextEditingController(text: freq),
+        voltCtrl = TextEditingController(text: volt),
+        latencyCtrl = TextEditingController(text: latency);
+
+  void dispose() {
+    sizeCtrl.dispose();
+    freqCtrl.dispose();
+    voltCtrl.dispose();
+    latencyCtrl.dispose();
+  }
+}
+
 class ServersScreen extends ConsumerStatefulWidget {
   const ServersScreen({super.key});
 
@@ -57,6 +88,7 @@ class ServersScreen extends ConsumerStatefulWidget {
 }
 
 class _ServersScreenState extends ConsumerState<ServersScreen> {
+  final ScrollController _serverScrollController = ScrollController();
   int _selectedTabIndex = 0;
 
   final List<String> _tabs = [
@@ -78,8 +110,8 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   String? _selectedDataCenterId;
   final _serverNameCtrl = TextEditingController(text: '');
   final _processorCtrl = TextEditingController(text: '');
-  final _coresCtrl = TextEditingController(text: '0');
-  final _threadsCtrl = TextEditingController(text: '0');
+  final _coresCtrl = TextEditingController(text: '');
+  final _threadsCtrl = TextEditingController(text: '');
   final _macAddressCtrl = TextEditingController(text: '');
 
   String _selectedServerType = 'Rack Server';
@@ -95,9 +127,8 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
 
   final List<String> _statusOptions = [
     'Active',
+    'Inactive',
     'Maintenance',
-    'Stopped',
-    'Offline',
   ];
 
   // Storage Form state
@@ -107,11 +138,21 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   String? _selectedNetworkDcId;
   String? _selectedNetworkServerId;
   String _selectedNetworkProvider = 'Jio';
-  final _networkNameCtrl = TextEditingController(text: 'gggh');
+  final _networkNameCtrl = TextEditingController(text: '');
   String _selectedConnectionType = '5G';
-  final _bandwidthCtrl = TextEditingController(text: '122');
+  final _bandwidthCtrl = TextEditingController(text: '');
   final List<_IpRow> _ipRows = [];
   bool _isSavingNetwork = false;
+
+  // RAM Management State
+  bool _isRamExpanded1 = true;
+  bool _isRamExpanded2 = false;
+  bool _isBasicRamDetails1 = false;
+  bool _isBasicRamDetails2 = false;
+  final List<_RamModuleData> _ramModules1 = [];
+  final List<_RamModuleData> _ramModules2 = [];
+  int _ramCounter1 = 2;
+  int _ramCounter2 = 2;
 
   final List<String> _networkProviders = [
     'Jio',
@@ -137,11 +178,30 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   void initState() {
     super.initState();
     _storageItems.add(_StorageItem());
-    _ipRows.add(_IpRow(ipv4: '122.233.44', ipv6: '7272:uur:990'));
+    _ipRows.add(_IpRow());
+    _ramModules1.add(_RamModuleData(
+      id: 1,
+      size: '63',
+      unit: 'GB',
+      ramType: 'DDR4',
+      freq: '3200',
+      volt: '1.2',
+      latency: 'CL16',
+    ));
+    _ramModules2.add(_RamModuleData(
+      id: 1,
+      size: '32',
+      unit: 'GB',
+      ramType: 'DDR4',
+      freq: '3200',
+      volt: '1.2',
+      latency: 'CL16',
+    ));
   }
 
   @override
   void dispose() {
+    _serverScrollController.dispose();
     _serverNameCtrl.dispose();
     _processorCtrl.dispose();
     _coresCtrl.dispose();
@@ -155,6 +215,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     for (final ip in _ipRows) {
       ip.dispose();
     }
+    for (final m in _ramModules1) {
+      m.dispose();
+    }
+    for (final m in _ramModules2) {
+      m.dispose();
+    }
     super.dispose();
   }
 
@@ -162,29 +228,14 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     _editingServer = null;
     _serverNameCtrl.clear();
     _processorCtrl.clear();
-    _coresCtrl.text = '0';
-    _threadsCtrl.text = '0';
+    _coresCtrl.clear();
+    _threadsCtrl.clear();
     _macAddressCtrl.clear();
     _selectedServerType = 'Rack Server';
     _selectedStatus = 'Active';
     _selectedDataCenterId = null;
   }
 
-  void _editServer(ServerModel srv) {
-    setState(() {
-      _editingServer = srv;
-      _serverNameCtrl.text = srv.name;
-      _processorCtrl.text = srv.cpuModel;
-      _coresCtrl.text = '${srv.cpuCores}';
-      _threadsCtrl.text = '${srv.threadCount}';
-      _macAddressCtrl.text = srv.macAddress ?? '';
-      _selectedServerType = srv.serverType;
-      _selectedStatus = srv.status;
-      _selectedDataCenterId = srv.dataCenterId.isNotEmpty ? srv.dataCenterId : null;
-      _selectedTabIndex = 0;
-    });
-    context.showSnackBar('Editing server "${srv.name}". Modify values and click Save Configuration.');
-  }
 
   String _getDataCenterName(String? id, List<DataCenterModel> dcList) {
     if (id == null || id.isEmpty) return '';
@@ -269,11 +320,14 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     final dcList = dcState.dataCenters.value ?? [];
     final serverList = state.servers.value ?? [];
 
-    return ListView(
-      padding: AppSpacing.screenPadding,
-      children: [
+    return RefreshIndicator(
+      onRefresh: () => ref.read(serverControllerProvider.notifier).refresh(),
+      child: ListView(
+        controller: _serverScrollController,
+        padding: AppSpacing.screenPadding,
+        children: [
         Text(
-          'Add Server',
+          _editingServer != null ? 'Edit Server' : 'Add Server',
           style: AppTextStyles.titleMedium(isDark).copyWith(
             fontWeight: FontWeight.w700,
             fontSize: 18,
@@ -281,7 +335,9 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Deploy and configure server for your infrastructure.',
+          _editingServer != null
+              ? 'Update configuration for "${_editingServer!.name}".'
+              : 'Deploy and configure server for your infrastructure.',
           style: AppTextStyles.bodySmall(isDark),
         ),
         const SizedBox(height: 16),
@@ -293,7 +349,10 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
             color: isDark ? AppColors.cardDark : Colors.white,
             borderRadius: AppRadius.borderLg,
             border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.borderLight,
+              color: _editingServer != null
+                  ? const Color(0xFF6366F1)
+                  : (isDark ? AppColors.borderDark : AppColors.borderLight),
+              width: _editingServer != null ? 1.5 : 1.0,
             ),
           ),
           child: Column(
@@ -302,28 +361,33 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               Row(
                 children: [
                   Icon(
-                    Icons.dns_rounded,
+                    _editingServer != null ? Icons.edit_note_rounded : Icons.dns_rounded,
                     size: 20,
-                    color: isDark ? AppColors.primaryLight : AppColors.primary,
+                    color: _editingServer != null
+                        ? const Color(0xFF6366F1)
+                        : (isDark ? AppColors.primaryLight : AppColors.primary),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    _editingServer != null
-                        ? 'Edit Server: ${_editingServer!.name}'
-                        : 'Server Node #1',
-                    style: AppTextStyles.titleSmall(isDark).copyWith(
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      _editingServer != null
+                          ? 'Edit Server: ${_editingServer!.name}'
+                          : 'Server Node #1',
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.titleSmall(isDark).copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   if (_editingServer != null) ...[
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     InkWell(
                       onTap: () {
                         setState(() => _resetServerForm());
                         context.showSnackBar('Edit cancelled. Switched to new server mode.');
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEE2E2),
                           borderRadius: BorderRadius.circular(6),
@@ -334,7 +398,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                             Icon(Icons.close, size: 12, color: Color(0xFFDC2626)),
                             SizedBox(width: 4),
                             Text(
-                              'Cancel Edit',
+                              'Cancel',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -346,7 +410,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                       ),
                     ),
                   ],
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   StatusBadge(
                     status: _selectedStatus.toLowerCase(),
                     customLabel: _selectedStatus.toUpperCase(),
@@ -427,7 +491,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Server Name',
-                      hintText: 'e.g. sabari ',
+                      hintText: 'e.g. Web Server Alpha',
                       controller: _serverNameCtrl,
                     ),
                   ),
@@ -467,7 +531,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'CPU Cores',
-                      hintText: 'e.g. 1',
+                      hintText: 'e.g. 16',
                       controller: _coresCtrl,
                       keyboardType: TextInputType.number,
                     ),
@@ -476,7 +540,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Thread Count',
-                      hintText: 'e.g. 1',
+                      hintText: 'e.g. 32',
                       controller: _threadsCtrl,
                       keyboardType: TextInputType.number,
                     ),
@@ -492,7 +556,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'MAC Address',
-                      hintText: 'e.g. sadccd',
+                      hintText: '00:00:00:00:00:00',
                       controller: _macAddressCtrl,
                     ),
                   ),
@@ -662,8 +726,9 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         ),
         const SizedBox(height: 24),
       ],
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _handleSaveServer() async {
     final srvName = _serverNameCtrl.text.trim();
@@ -837,10 +902,28 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                     Text(
                       srv.name,
                       style: AppTextStyles.titleSmall(isDark).copyWith(fontWeight: FontWeight.w700),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    Text(
-                      '${srv.ipAddress} • ${srv.cpuModel}',
-                      style: AppTextStyles.bodySmall(isDark).copyWith(fontSize: 11.5),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.view_in_ar_outlined,
+                          size: 13,
+                          color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            srv.serverType,
+                            style: AppTextStyles.bodySmall(isDark).copyWith(
+                              fontSize: 11.5,
+                              color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -858,7 +941,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               IconButton(
                 tooltip: 'Edit Server',
                 icon: const Icon(Icons.edit_outlined, size: 18),
-                onPressed: () => _editServer(srv),
+                onPressed: () => _showServerConfigDialog(
+                  context,
+                  isDark,
+                  server: srv,
+                  isEdit: true,
+                ),
               ),
             ],
           ),
@@ -876,29 +964,60 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.successSubtle,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.circle, size: 6, color: AppColors.successDark),
-                    SizedBox(width: 4),
-                    Text(
-                      'Operational',
-                      style: TextStyle(
-                        color: AppColors.successDark,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildServerStatusBadge(srv.status, isDark),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServerStatusBadge(String status, bool isDark) {
+    final s = status.toLowerCase();
+    Color bg;
+    Color dot;
+    Color text;
+    String display = status;
+
+    if (s == 'active') {
+      bg = isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5);
+      dot = const Color(0xFF10B981);
+      text = isDark ? const Color(0xFF6EE7B7) : const Color(0xFF059669);
+      display = 'Active';
+    } else if (s == 'inactive') {
+      bg = isDark ? const Color(0xFF7F1D1D).withValues(alpha: 0.5) : const Color(0xFFFEF2F2);
+      dot = const Color(0xFFEF4444);
+      text = isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626);
+      display = 'Inactive';
+    } else if (s == 'maintenance') {
+      bg = isDark ? const Color(0xFF7C2D12).withValues(alpha: 0.5) : const Color(0xFFFFF1F2);
+      dot = const Color(0xFFF43F5E);
+      text = isDark ? const Color(0xFFFDA4AF) : const Color(0xFFE11D48);
+      display = 'Maintenance';
+    } else {
+      bg = isDark ? AppColors.surfaceDark : const Color(0xFFF1F5F9);
+      dot = const Color(0xFF64748B);
+      text = isDark ? Colors.white70 : const Color(0xFF475569);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, size: 6, color: dot),
+          const SizedBox(width: 4),
+          Text(
+            display,
+            style: TextStyle(
+              color: text,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
           ),
         ],
       ),
@@ -1020,70 +1139,113 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
 
   // 3. Add RAM Tab
   Widget _buildAddRamTab(BuildContext context, bool isDark) {
-    bool isExpanded1 = true;
-    bool isExpanded2 = false;
-    bool isBasicDetails1 = false;
-    List<int> ramModules1 = [1];
-    List<int> ramModules2 = [1];
-    int ramCounter1 = 2;
-    int ramCounter2 = 2;
+    return ListView(
+      padding: AppSpacing.screenPadding,
+      children: [
+        Text(
+          'RAM Management',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Select a deployed server below to configure its RAM modules.',
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 24),
 
-    return StatefulBuilder(
-      builder: (context, setState) {
-        return ListView(
-          padding: AppSpacing.screenPadding,
-          children: [
-            Text(
-              'RAM Management',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Select a deployed server below to configure its RAM modules.',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            // Server 1
-            _buildServerRamBlock(
-              'Web Server Alpha', 'Bare Metal', true, isExpanded1, isBasicDetails1, ramModules1,
-              onExpand: () => setState(() => isExpanded1 = !isExpanded1),
-              onCheckBasic: (v) => setState(() => isBasicDetails1 = v!),
-              onAddRam: () => setState(() {
-                ramModules1.add(ramCounter1++);
-              }),
-              onRemoveRam: (id) => setState(() {
-                ramModules1.remove(id);
-              }),
-              isDark: isDark,
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Server 2
-            _buildServerRamBlock(
-              'Database Node 1', 'Virtual Machine', true, isExpanded2, false, ramModules2,
-              onExpand: () => setState(() => isExpanded2 = !isExpanded2),
-              onCheckBasic: (v) {},
-              onAddRam: () => setState(() {
-                ramModules2.add(ramCounter2++);
-              }),
-              onRemoveRam: (id) => setState(() {
-                ramModules2.remove(id);
-              }),
-              isDark: isDark,
-              isServer2: true,
-            ),
-          ],
-        );
-      },
+        // Server 1
+        _buildServerRamBlock(
+          'Web Server Alpha',
+          'Bare Metal',
+          true,
+          _isRamExpanded1,
+          _isBasicRamDetails1,
+          _ramModules1,
+          onExpand: () => setState(() => _isRamExpanded1 = !_isRamExpanded1),
+          onCheckBasic: (v) => setState(() => _isBasicRamDetails1 = v ?? false),
+          onAddRam: () => setState(() {
+            _ramModules1.add(_RamModuleData(
+              id: _ramCounter1++,
+              size: '',
+              unit: 'GB',
+              ramType: 'DDR4',
+              freq: '',
+              volt: '',
+              latency: '',
+            ));
+          }),
+          onRemoveRam: (id) => setState(() {
+            _ramModules1.removeWhere((m) => m.id == id);
+          }),
+          onDuplicateRam: (mod) => setState(() {
+            _ramModules1.add(_RamModuleData(
+              id: _ramCounter1++,
+              size: mod.sizeCtrl.text,
+              unit: mod.unit,
+              ramType: mod.ramType,
+              freq: mod.freqCtrl.text,
+              volt: mod.voltCtrl.text,
+              latency: mod.latencyCtrl.text,
+            ));
+          }),
+          onSaveRam: () {
+            context.showSnackBar('RAM configuration for Web Server Alpha saved successfully!');
+          },
+          onUpdate: () => setState(() {}),
+          isDark: isDark,
+        ),
+
+        const SizedBox(height: 16),
+
+        // Server 2
+        _buildServerRamBlock(
+          'Database Node 1',
+          'Virtual Machine',
+          true,
+          _isRamExpanded2,
+          _isBasicRamDetails2,
+          _ramModules2,
+          onExpand: () => setState(() => _isRamExpanded2 = !_isRamExpanded2),
+          onCheckBasic: (v) => setState(() => _isBasicRamDetails2 = v ?? false),
+          onAddRam: () => setState(() {
+            _ramModules2.add(_RamModuleData(
+              id: _ramCounter2++,
+              size: '',
+              unit: 'GB',
+              ramType: 'DDR4',
+              freq: '',
+              volt: '',
+              latency: '',
+            ));
+          }),
+          onRemoveRam: (id) => setState(() {
+            _ramModules2.removeWhere((m) => m.id == id);
+          }),
+          onDuplicateRam: (mod) => setState(() {
+            _ramModules2.add(_RamModuleData(
+              id: _ramCounter2++,
+              size: mod.sizeCtrl.text,
+              unit: mod.unit,
+              ramType: mod.ramType,
+              freq: mod.freqCtrl.text,
+              volt: mod.voltCtrl.text,
+              latency: mod.latencyCtrl.text,
+            ));
+          }),
+          onSaveRam: () {
+            context.showSnackBar('RAM configuration for Database Node 1 saved successfully!');
+          },
+          onUpdate: () => setState(() {}),
+          isDark: isDark,
+        ),
+      ],
     );
   }
 
@@ -1150,7 +1312,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                         setState(() => _storageItems.add(_StorageItem()));
                       },
                       icon: const Icon(Icons.add, size: 14),
-                      label: const Text('+ Add Storage'),
+                      label: const Text('Add Storage'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF6366F1),
                         side: const BorderSide(color: Color(0xFFE0E7FF)),
@@ -1172,7 +1334,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 24.0),
                         child: Center(
                           child: Text(
-                            'Click "+ Add Storage" to configure storage disks.',
+                            'Click "Add Storage" to configure storage disks.',
                             style: TextStyle(
                               color: isDark ? AppColors.textMutedDark : const Color(0xFF64748B),
                             ),
@@ -1432,7 +1594,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                         context.showSnackBar('Connection form cleared');
                       },
                       icon: const Icon(Icons.add, size: 14),
-                      label: const Flexible(child: Text('+ Add Connection', overflow: TextOverflow.ellipsis)),
+                      label: const Text('Add Connection', overflow: TextOverflow.ellipsis),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF6366F1),
                         side: const BorderSide(color: Color(0xFFE0E7FF)),
@@ -1740,7 +1902,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () => setState(() => _ipRows.add(_IpRow())),
                         icon: const Icon(Icons.add, size: 14),
-                        label: const Text('+ Add IPs'),
+                        label: const Text('Add IPs'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF6366F1),
                           side: const BorderSide(color: Color(0xFFE0E7FF)),
@@ -1863,12 +2025,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                       text: 'Discard Changes',
                       onPressed: () {
                         setState(() {
-                          _networkNameCtrl.text = 'gggh';
-                          _bandwidthCtrl.text = '122';
-                          _selectedNetworkProvider = 'Jio';
-                          _selectedConnectionType = '5G';
+                          _networkNameCtrl.clear();
+                          _bandwidthCtrl.clear();
+                          _selectedNetworkProvider = _networkProviders.first;
+                          _selectedConnectionType = _connectionTypes.first;
                           _ipRows.clear();
-                          _ipRows.add(_IpRow(ipv4: '122.233.44', ipv6: '7272:uur:990'));
+                          _ipRows.add(_IpRow());
                         });
                         context.showSnackBar('Network form reset');
                       },
@@ -1991,190 +2153,547 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     required ServerModel server,
     required bool isEdit,
   }) {
+    final dcState = ref.read(dataCenterControllerProvider);
+    final dcList = dcState.dataCenters.asData?.value ?? [];
+
+    final nameCtrl = TextEditingController(text: server.name);
+    final procCtrl = TextEditingController(text: server.cpuModel);
+    final coresCtrl = TextEditingController(text: server.cpuCores > 0 ? '${server.cpuCores}' : '');
+    final threadsCtrl = TextEditingController(text: server.threadCount > 0 ? '${server.threadCount}' : '');
+    final macCtrl = TextEditingController(text: server.macAddress ?? '');
+
+    String selectedType = _serverTypes.contains(server.serverType) ? server.serverType : _serverTypes.first;
+    String selectedStatus = _statusOptions.contains(server.status) ? server.status : _statusOptions.first;
+    String? selectedDcId = dcList.any((d) => d.id == server.dataCenterId) ? server.dataCenterId : null;
+
+    bool currentEditMode = isEdit;
+    bool isSaving = false;
+
+    // Fetch latest details from API on dialog open (matches web app GET /api/server-details/{id})
+    ref.read(serverRepositoryProvider).getServerById(server.id).then((fresh) {
+      if (fresh != null) {
+        nameCtrl.text = fresh.name;
+        procCtrl.text = fresh.cpuModel;
+        coresCtrl.text = fresh.cpuCores > 0 ? '${fresh.cpuCores}' : '';
+        threadsCtrl.text = fresh.threadCount > 0 ? '${fresh.threadCount}' : '';
+        macCtrl.text = fresh.macAddress ?? '';
+        if (_serverTypes.contains(fresh.serverType)) {
+          selectedType = fresh.serverType;
+        }
+        if (_statusOptions.contains(fresh.status)) {
+          selectedStatus = fresh.status;
+        }
+        if (dcList.any((d) => d.id == fresh.dataCenterId)) {
+          selectedDcId = fresh.dataCenterId;
+        }
+      }
+    });
+
     showDialog(
       context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          backgroundColor: isDark ? AppColors.cardDark : Colors.white,
-          child: Container(
-            width: 550,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4F46E5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(isEdit ? Icons.edit : Icons.dns_rounded, color: Colors.white, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        isEdit ? 'Edit Server Configuration' : 'Server Configuration',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white : const Color(0xFF0F172A),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppColors.surfaceDark : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Icon(Icons.close, size: 16),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                // Form Fields
-                Row(
-                  children: [
-                    Expanded(child: _buildDialogField('Data Center', server.dataCenterName.isNotEmpty ? server.dataCenterName : 'Circuit Point', isEdit, isDark)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildDialogField('Server Name', server.name, isEdit, isDark)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: _buildDialogField('Server Type', server.serverType, isEdit, isDark)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildDialogField('Processor Name', server.cpuModel, isEdit, isDark)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: _buildDialogField('CPU Cores', '${server.cpuCores}', isEdit, isDark)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildDialogField('Threads', '${server.threadCount}', isEdit, isDark)),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setModalState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: isDark ? AppColors.cardDark : Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 580, maxHeight: 720),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
                         children: [
-                          Text(
-                            'Server Status',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
                           Container(
-                            height: 40,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                              color: const Color(0xFF6366F1),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              children: [
-                                const Icon(Icons.circle, size: 8, color: Color(0xFF10B981)),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    server.status,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Color(0xFF10B981),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            child: Icon(
+                              currentEditMode ? Icons.edit_note_rounded : Icons.dns_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              currentEditMode
+                                  ? 'Edit Server Configuration'
+                                  : 'Server Configuration',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => Navigator.pop(dialogCtx),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: isDark ? AppColors.surfaceDark : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(Icons.close, size: 16),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: _buildDialogField('MAC Address', server.macAddress ?? 'N/A', isEdit, isDark)),
-                    const SizedBox(width: 16),
-                    const Spacer(),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: isDark ? Colors.white : const Color(0xFF0F172A),
-                        side: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      const SizedBox(height: 20),
+
+                      // Scrollable content
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: LayoutBuilder(
+                            builder: (ctx, constraints) {
+                              final isDialogMobile = constraints.maxWidth < 450;
+                              if (isDialogMobile) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildDialogDropdown(
+                                      label: 'Data Center',
+                                      value: selectedDcId,
+                                      hint: 'Select Data Center',
+                                      items: [
+                                        const DropdownMenuItem<String?>(
+                                          value: null,
+                                          child: Text('Select Data Center'),
+                                        ),
+                                        ...dcList.map((dc) => DropdownMenuItem<String?>(
+                                          value: dc.id,
+                                          child: Text(dc.name, overflow: TextOverflow.ellipsis),
+                                        )),
+                                      ],
+                                      onChanged: currentEditMode
+                                          ? (val) => setModalState(() => selectedDcId = val)
+                                          : null,
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildDialogTextField(
+                                      label: 'Server Name',
+                                      controller: nameCtrl,
+                                      hint: 'Unnamed Server',
+                                      readOnly: !currentEditMode,
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildDialogDropdown(
+                                      label: 'Server Type',
+                                      value: selectedType,
+                                      hint: 'Select Type',
+                                      items: _serverTypes.map((t) => DropdownMenuItem<String?>(
+                                        value: t,
+                                        child: Text(t, overflow: TextOverflow.ellipsis),
+                                      )).toList(),
+                                      onChanged: currentEditMode
+                                          ? (val) => setModalState(() => selectedType = val ?? _serverTypes.first)
+                                          : null,
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildDialogTextField(
+                                      label: 'Processor Name',
+                                      controller: procCtrl,
+                                      hint: 'e.g. Intel Xeon',
+                                      readOnly: !currentEditMode,
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _buildDialogTextField(
+                                            label: 'CPU Cores',
+                                            controller: coresCtrl,
+                                            hint: 'e.g. 16',
+                                            keyboardType: TextInputType.number,
+                                            readOnly: !currentEditMode,
+                                            isDark: isDark,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _buildDialogTextField(
+                                            label: 'Threads',
+                                            controller: threadsCtrl,
+                                            hint: 'e.g. 32',
+                                            keyboardType: TextInputType.number,
+                                            readOnly: !currentEditMode,
+                                            isDark: isDark,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildDialogDropdown(
+                                      label: 'Server Status',
+                                      value: selectedStatus,
+                                      hint: 'Status',
+                                      items: _statusOptions.map((s) => DropdownMenuItem<String?>(
+                                        value: s,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.circle,
+                                              size: 8,
+                                              color: s.toLowerCase() == 'active'
+                                                  ? const Color(0xFF10B981)
+                                                  : (s.toLowerCase() == 'inactive'
+                                                      ? const Color(0xFFEF4444)
+                                                      : const Color(0xFFF43F5E)),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                s,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )).toList(),
+                                      onChanged: currentEditMode
+                                          ? (val) => setModalState(() => selectedStatus = val ?? _statusOptions.first)
+                                          : null,
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildDialogTextField(
+                                      label: 'MAC Address',
+                                      controller: macCtrl,
+                                      hint: '00:00:00:00:00:00',
+                                      readOnly: !currentEditMode,
+                                      isDark: isDark,
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Row 1: Data Center & Server Name
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _buildDialogDropdown(
+                                          label: 'Data Center',
+                                          value: selectedDcId,
+                                          hint: 'Select Data Center',
+                                          items: [
+                                            const DropdownMenuItem<String?>(
+                                              value: null,
+                                              child: Text('Select Data Center'),
+                                            ),
+                                            ...dcList.map((dc) => DropdownMenuItem<String?>(
+                                              value: dc.id,
+                                              child: Text(dc.name, overflow: TextOverflow.ellipsis),
+                                            )),
+                                          ],
+                                          onChanged: currentEditMode
+                                              ? (val) => setModalState(() => selectedDcId = val)
+                                              : null,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildDialogTextField(
+                                          label: 'Server Name',
+                                          controller: nameCtrl,
+                                          hint: 'Unnamed Server',
+                                          readOnly: !currentEditMode,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // Row 2: Server Type & Processor Name
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _buildDialogDropdown(
+                                          label: 'Server Type',
+                                          value: selectedType,
+                                          hint: 'Select Type',
+                                          items: _serverTypes.map((t) => DropdownMenuItem<String?>(
+                                            value: t,
+                                            child: Text(t, overflow: TextOverflow.ellipsis),
+                                          )).toList(),
+                                          onChanged: currentEditMode
+                                              ? (val) => setModalState(() => selectedType = val ?? _serverTypes.first)
+                                              : null,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildDialogTextField(
+                                          label: 'Processor Name',
+                                          controller: procCtrl,
+                                          hint: 'e.g. Intel Xeon',
+                                          readOnly: !currentEditMode,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // Row 3: CPU Cores & Threads & Server Status
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: _buildDialogTextField(
+                                          label: 'CPU Cores',
+                                          controller: coresCtrl,
+                                          hint: 'e.g. 16',
+                                          keyboardType: TextInputType.number,
+                                          readOnly: !currentEditMode,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        flex: 2,
+                                        child: _buildDialogTextField(
+                                          label: 'Threads',
+                                          controller: threadsCtrl,
+                                          hint: 'e.g. 32',
+                                          keyboardType: TextInputType.number,
+                                          readOnly: !currentEditMode,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        flex: 3,
+                                        child: _buildDialogDropdown(
+                                          label: 'Server Status',
+                                          value: selectedStatus,
+                                          hint: 'Status',
+                                          items: _statusOptions.map((s) => DropdownMenuItem<String?>(
+                                            value: s,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.circle,
+                                                  size: 8,
+                                                  color: s.toLowerCase() == 'active'
+                                                      ? const Color(0xFF10B981)
+                                                      : (s.toLowerCase() == 'inactive'
+                                                          ? const Color(0xFFEF4444)
+                                                          : const Color(0xFFF43F5E)),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Flexible(
+                                                  child: Text(
+                                                    s,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )).toList(),
+                                          onChanged: currentEditMode
+                                              ? (val) => setModalState(() => selectedStatus = val ?? _statusOptions.first)
+                                              : null,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // Row 4: MAC Address
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _buildDialogTextField(
+                                          label: 'MAC Address',
+                                          controller: macCtrl,
+                                          hint: '00:00:00:00:00:00',
+                                          readOnly: !currentEditMode,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      const Spacer(),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
                       ),
-                      child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _editServer(server);
-                      },
-                      icon: const Icon(Icons.edit, size: 16),
-                      label: const Text('Edit Configuration'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      const SizedBox(height: 24),
+                      const Divider(height: 1),
+                      const SizedBox(height: 16),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(dialogCtx),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: isDark ? Colors.white : const Color(0xFF0F172A),
+                                side: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              ),
+                              child: Text(
+                                currentEditMode ? 'Cancel' : 'Close',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      if (!currentEditMode) {
+                                        setModalState(() => currentEditMode = true);
+                                        return;
+                                      }
+
+                                      setModalState(() => isSaving = true);
+                                      final srvName = nameCtrl.text.trim();
+                                      final dcName = _getDataCenterName(selectedDcId, dcList);
+                                      final updated = server.copyWith(
+                                        name: srvName.isEmpty ? 'Unnamed Server' : srvName,
+                                        cpuModel: procCtrl.text.trim(),
+                                        cpuCores: int.tryParse(coresCtrl.text.trim()) ?? 0,
+                                        threadCount: int.tryParse(threadsCtrl.text.trim()) ?? 0,
+                                        macAddress: macCtrl.text.trim(),
+                                        serverType: selectedType,
+                                        status: selectedStatus,
+                                        dataCenterId: selectedDcId ?? (server.dataCenterId.isNotEmpty ? server.dataCenterId : '5'),
+                                        dataCenterName: dcName.isNotEmpty ? dcName : server.dataCenterName,
+                                      );
+
+                                      try {
+                                        await ref.read(serverControllerProvider.notifier).updateServer(updated);
+                                        if (dialogCtx.mounted) {
+                                          Navigator.pop(dialogCtx);
+                                          context.showSnackBar('Server "${updated.name}" updated successfully!');
+                                        }
+                                      } catch (e) {
+                                        if (dialogCtx.mounted) {
+                                          setModalState(() => isSaving = false);
+                                          context.showSnackBar('Failed to update server: $e', isError: true);
+                                        }
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF6366F1),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              ),
+                              child: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : Text(
+                                      currentEditMode ? 'Save Changes' : 'Edit Configuration',
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildDialogField(String label, String value, bool isEdit, bool isDark, {bool isEmpty = false}) {
+  Widget _buildDialogTextField({
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    required bool readOnly,
+    required bool isDark,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B))),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+          ),
+        ),
         const SizedBox(height: 6),
         Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: 42,
           decoration: BoxDecoration(
             border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
             borderRadius: BorderRadius.circular(8),
-            color: isEdit ? (isDark ? AppColors.surfaceDark : Colors.white) : (isDark ? AppColors.surfaceDark : const Color(0xFFF8FAFC)),
+            color: readOnly
+                ? (isDark ? AppColors.surfaceDark : const Color(0xFFF8FAFC))
+                : (isDark ? AppColors.surfaceDark : Colors.white),
           ),
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
+          child: TextField(
+            controller: controller,
+            readOnly: readOnly,
+            keyboardType: keyboardType,
             style: TextStyle(
               fontSize: 13,
-              color: isEmpty ? (isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8)) : (isDark ? Colors.white : const Color(0xFF0F172A)),
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: InputBorder.none,
             ),
           ),
         ),
@@ -2182,16 +2701,95 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     );
   }
 
-  Widget _buildRamInput(String label, {String? hint, String? value, bool isDark = false, Widget? suffix}) {
+  Widget _buildDialogDropdown({
+    required String label,
+    required String? value,
+    required String hint,
+    required List<DropdownMenuItem<String?>> items,
+    required ValueChanged<String?>? onChanged,
+    required bool isDark,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B))),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+          ),
+        ),
         const SizedBox(height: 6),
         Container(
-          height: 40,
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+            borderRadius: BorderRadius.circular(8),
+            color: onChanged == null
+                ? (isDark ? AppColors.surfaceDark : const Color(0xFFF8FAFC))
+                : (isDark ? AppColors.surfaceDark : Colors.white),
+          ),
+          alignment: Alignment.centerLeft,
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: items.any((it) => it.value == value) ? value : null,
+              hint: Text(
+                hint,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                ),
+              ),
+              isExpanded: true,
+              icon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+              ),
+              dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+              ),
+              items: items,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildRamInput(
+    String label, {
+    String? hint,
+    String? value,
+    TextEditingController? controller,
+    ValueChanged<String>? onChanged,
+    bool isDark = false,
+    Widget? suffix,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 42,
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+            ),
             borderRadius: BorderRadius.circular(8),
             color: isDark ? AppColors.surfaceDark : Colors.white,
           ),
@@ -2199,14 +2797,23 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
             children: [
               Expanded(
                 child: TextFormField(
-                  initialValue: value,
+                  controller: controller,
+                  initialValue: controller == null ? value : null,
+                  onChanged: onChanged,
                   decoration: InputDecoration(
                     hintText: hint,
-                    hintStyle: TextStyle(fontSize: 13, color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? AppColors.textMutedDark : const Color(0xFF94A3B8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     border: InputBorder.none,
+                    isDense: true,
                   ),
-                  style: TextStyle(fontSize: 13.5, color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
                 ),
               ),
               ?suffix,
@@ -2217,56 +2824,79 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     );
   }
 
-  Widget _buildRamModuleForm(int id, Function(int) onRemove, bool isDark, {bool isServer2 = false}) {
+  Widget _buildRamModuleForm(
+    _RamModuleData mod,
+    VoidCallback onRemove,
+    VoidCallback onDuplicate,
+    VoidCallback onUpdate,
+    bool isDark,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isMobile = constraints.maxWidth < 600;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Module Title, Badge, Copy & Delete Actions
               Row(
                 children: [
-                  Text('RAM Module #$id', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-                  if (!isServer2 && id == 1) ...[
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(4)),
-                      child: const Text('64 GB', style: TextStyle(fontSize: 11, color: Color(0xFF6366F1), fontWeight: FontWeight.w700)),
+                  Text(
+                    'RAM Module #${mod.id}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
                     ),
-                  ],
-                ],
-              ),
-              Row(
-                children: [
-                  InkWell(
-                    onTap: () {},
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                        borderRadius: BorderRadius.circular(4),
-                        color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF312E81) : const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${mod.sizeCtrl.text.isNotEmpty ? mod.sizeCtrl.text : '0'} ${mod.unit}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF4F46E5),
                       ),
-                      child: const Icon(Icons.copy_rounded, size: 14, color: Color(0xFF64748B)),
+                    ),
+                  ),
+                  const Spacer(),
+                  InkWell(
+                    onTap: onDuplicate,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                        borderRadius: BorderRadius.circular(6),
+                        color: isDark ? AppColors.surfaceDark : Colors.white,
+                      ),
+                      child: Icon(
+                        Icons.copy_rounded,
+                        size: 14,
+                        color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: () => onRemove(id),
+                    onTap: onRemove,
                     child: Container(
-                      padding: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         border: Border.all(color: const Color(0xFFFEE2E2)),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(6),
                         color: const Color(0xFFFEF2F2),
                       ),
                       child: const Icon(Icons.delete_outline, size: 14, color: Color(0xFFEF4444)),
@@ -2274,75 +2904,259 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+              const SizedBox(height: 16),
+
+              if (isMobile) ...[
+                // Mobile layout
+                _buildRamSizeWithUnitInput(mod, onUpdate, isDark),
+                const SizedBox(height: 12),
+                _buildRamTypeDropdown(mod, onUpdate, isDark),
+                const SizedBox(height: 12),
+                _buildRamInput(
+                  'Frequency (MHz)',
+                  controller: mod.freqCtrl,
+                  hint: '3200',
+                  isDark: isDark,
+                  onChanged: (_) => onUpdate(),
+                ),
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    Expanded(child: _buildRamInput('RAM Size', hint: 'Enter RAM Size', value: (!isServer2 && id == 1) ? '64' : null, isDark: isDark)),
-                    const SizedBox(width: 8),
-                    Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
-                        borderRadius: BorderRadius.circular(8),
+                    Expanded(
+                      child: _buildRamInput(
+                        'Voltage (V)',
+                        controller: mod.voltCtrl,
+                        hint: '1.2',
+                        isDark: isDark,
+                        onChanged: (_) => onUpdate(),
                       ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        children: [
-                          Text('GB', style: TextStyle(fontSize: 13, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.keyboard_arrow_down, size: 16),
-                        ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildRamInput(
+                        'Latency',
+                        controller: mod.latencyCtrl,
+                        hint: 'CL16',
+                        isDark: isDark,
+                        onChanged: (_) => onUpdate(),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildRamInput('RAM Type', hint: 'DDR4', value: (!isServer2 && id == 1) ? 'DDR4' : null, isDark: isDark),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildRamInput('Frequency (MHz)', hint: 'Enter Frequency', value: (!isServer2 && id == 1) ? '3200' : null, isDark: isDark),
-              ),
+              ] else ...[
+                // Desktop layout
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: _buildRamSizeWithUnitInput(mod, onUpdate, isDark),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 3,
+                      child: _buildRamTypeDropdown(mod, onUpdate, isDark),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 3,
+                      child: _buildRamInput(
+                        'Frequency (MHz)',
+                        controller: mod.freqCtrl,
+                        hint: '3200',
+                        isDark: isDark,
+                        onChanged: (_) => onUpdate(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildRamInput(
+                        'Voltage (V)',
+                        controller: mod.voltCtrl,
+                        hint: '1.2',
+                        isDark: isDark,
+                        onChanged: (_) => onUpdate(),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildRamInput(
+                        'Latency',
+                        controller: mod.latencyCtrl,
+                        hint: 'CL16',
+                        isDark: isDark,
+                        onChanged: (_) => onUpdate(),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(child: SizedBox.shrink()),
+                  ],
+                ),
+              ],
             ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _buildRamInput('Voltage (V)', hint: 'Enter Voltage (e.g. 1.2)', value: (!isServer2 && id == 1) ? '1.2' : null, isDark: isDark),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildRamInput('Latency', hint: 'CL16 / CL18 / CL40', value: (!isServer2 && id == 1) ? 'CL16' : null, isDark: isDark),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(child: SizedBox.shrink()),
-            ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
+  Widget _buildRamSizeWithUnitInput(_RamModuleData mod, VoidCallback onUpdate, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'RAM Size',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  color: isDark ? AppColors.surfaceDark : Colors.white,
+                ),
+                child: TextField(
+                  controller: mod.sizeCtrl,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => onUpdate(),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter RAM size',
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: const Color(0xFF6366F1), // Purple border matching Screenshot 4
+                  width: 1.5,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                color: isDark ? AppColors.surfaceDark : Colors.white,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: ['MB', 'GB', 'TB'].contains(mod.unit) ? mod.unit : 'GB',
+                  icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: Color(0xFF6366F1)),
+                  items: ['MB', 'GB', 'TB'].map((u) {
+                    return DropdownMenuItem<String>(
+                      value: u,
+                      child: Text(
+                        u,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      mod.unit = val;
+                      onUpdate();
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRamTypeDropdown(_RamModuleData mod, VoidCallback onUpdate, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'RAM Type',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.textSecondaryDark : const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: const Color(0xFF6366F1), // Purple border matching Screenshot 5
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(8),
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: ['DDR3', 'DDR4', 'DDR5'].contains(mod.ramType) ? mod.ramType : 'DDR4',
+              isExpanded: true,
+              icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: Color(0xFF6366F1)),
+              items: ['DDR3', 'DDR4', 'DDR5'].map((t) {
+                return DropdownMenuItem<String>(
+                  value: t,
+                  child: Text(
+                    t,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  mod.ramType = val;
+                  onUpdate();
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildServerRamBlock(
-    String name, String type, bool isOnline, bool isExpanded, bool isBasicChecked, List<int> modules, {
+    String name, String type, bool isOnline, bool isExpanded, bool isBasicChecked, List<_RamModuleData> modules, {
     required VoidCallback onExpand,
     required ValueChanged<bool?> onCheckBasic,
     required VoidCallback onAddRam,
     required Function(int) onRemoveRam,
+    required Function(_RamModuleData) onDuplicateRam,
+    required VoidCallback onSaveRam,
+    required VoidCallback onUpdate,
     required bool isDark,
-    bool isServer2 = false,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -2439,12 +3253,18 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                       ),
                     )
                   else ...[
-                    ...modules.map((id) => _buildRamModuleForm(id, onRemoveRam, isDark, isServer2: isServer2)),
+                    ...modules.map((mod) => _buildRamModuleForm(
+                          mod,
+                          () => onRemoveRam(mod.id),
+                          () => onDuplicateRam(mod),
+                          onUpdate,
+                          isDark,
+                        )),
                     const SizedBox(height: 16),
                     Align(
                       alignment: Alignment.centerRight,
                       child: ElevatedButton(
-                        onPressed: () {},
+                        onPressed: onSaveRam,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF6366F1),
                           foregroundColor: Colors.white,

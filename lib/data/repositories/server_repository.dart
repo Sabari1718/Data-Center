@@ -107,6 +107,7 @@ class ServerRepository {
       }
     } catch (e) {
       log('Failed to save server on API: $e');
+      rethrow;
     }
     _servers.insert(0, model);
     return model;
@@ -124,15 +125,20 @@ class ServerRepository {
         final index = _servers.indexWhere((s) => s.id == model.id);
         if (index != -1) {
           _servers[index] = updated;
+        } else {
+          _servers.add(updated);
         }
         return updated;
       }
     } catch (e) {
       log('Failed to update server on API: $e');
+      rethrow;
     }
     final index = _servers.indexWhere((s) => s.id == model.id);
     if (index != -1) {
       _servers[index] = model;
+    } else {
+      _servers.add(model);
     }
     return model;
   }

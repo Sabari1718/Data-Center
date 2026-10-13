@@ -70,7 +70,7 @@ class _HostingScreenState extends ConsumerState<HostingScreen> {
   // --- Add New Hosting (Standalone) Form Controllers & State ---
   String _serviceProvider = 'data';
   String _hostingType = 'sa';
-  final _ipCtrl = TextEditingController(text: '77899');
+  final _ipCtrl = TextEditingController();
   String _status = 'Pending';
   String _controlPanel = 'Plesk';
 
@@ -81,14 +81,14 @@ class _HostingScreenState extends ConsumerState<HostingScreen> {
   final _ns1Ctrl = TextEditingController();
   final _ns2Ctrl = TextEditingController();
 
-  final _storageCtrl = TextEditingController(text: '100 gb');
-  final _bandwidthCtrl = TextEditingController(text: '1 tp');
-  final _addonLimitCtrl = TextEditingController(text: '0');
-  final _subdomainLimitCtrl = TextEditingController(text: '0');
-  final _emailLimitCtrl = TextEditingController(text: '0');
-  final _ftpLimitCtrl = TextEditingController(text: '0');
-  final _mysqlLimitCtrl = TextEditingController(text: '0');
-  final _inodeLimitCtrl = TextEditingController(text: '0');
+  final _storageCtrl = TextEditingController();
+  final _bandwidthCtrl = TextEditingController();
+  final _addonLimitCtrl = TextEditingController();
+  final _subdomainLimitCtrl = TextEditingController();
+  final _emailLimitCtrl = TextEditingController();
+  final _ftpLimitCtrl = TextEditingController();
+  final _mysqlLimitCtrl = TextEditingController();
+  final _inodeLimitCtrl = TextEditingController();
 
   String _webServer = 'Nginx';
   String _phpVersion = '8.2';
@@ -105,25 +105,25 @@ class _HostingScreenState extends ConsumerState<HostingScreen> {
   // --- Add Hosting with Server Form Controllers & State ---
   dynamic _serverHostingSelectedServerId;
   String _serverHostingType = 'sa';
-  final _serverHostingNameCtrl = TextEditingController(text: 'gfg');
-  final _serverIpCtrl = TextEditingController(text: 'dg');
+  final _serverHostingNameCtrl = TextEditingController();
+  final _serverIpCtrl = TextEditingController();
   String _serverStatus = 'Suspended';
   String _serverControlPanel = 'Plesk';
 
-  final _serverUsernameCtrl = TextEditingController(text: 'jjjjkjsseeett');
-  final _serverPasswordCtrl = TextEditingController(text: '89999999');
-  final _serverCustomerIdCtrl = TextEditingController(text: 'hgf');
-  final _serverNs1Ctrl = TextEditingController(text: 'hgf');
-  final _serverNs2Ctrl = TextEditingController(text: 'ghf');
+  final _serverUsernameCtrl = TextEditingController();
+  final _serverPasswordCtrl = TextEditingController();
+  final _serverCustomerIdCtrl = TextEditingController();
+  final _serverNs1Ctrl = TextEditingController();
+  final _serverNs2Ctrl = TextEditingController();
 
-  final _serverStorageCtrl = TextEditingController(text: 'g');
-  final _serverBandwidthCtrl = TextEditingController(text: 'hgf');
-  final _serverAddonLimitCtrl = TextEditingController(text: '0');
-  final _serverSubdomainLimitCtrl = TextEditingController(text: '0');
-  final _serverEmailLimitCtrl = TextEditingController(text: '0');
-  final _serverFtpLimitCtrl = TextEditingController(text: '0');
-  final _serverMysqlLimitCtrl = TextEditingController(text: '0');
-  final _serverInodeLimitCtrl = TextEditingController(text: '0');
+  final _serverStorageCtrl = TextEditingController();
+  final _serverBandwidthCtrl = TextEditingController();
+  final _serverAddonLimitCtrl = TextEditingController();
+  final _serverSubdomainLimitCtrl = TextEditingController();
+  final _serverEmailLimitCtrl = TextEditingController();
+  final _serverFtpLimitCtrl = TextEditingController();
+  final _serverMysqlLimitCtrl = TextEditingController();
+  final _serverInodeLimitCtrl = TextEditingController();
 
   String _serverWebServer = 'Nginx';
   String _serverPhpVersion = '8.1';
