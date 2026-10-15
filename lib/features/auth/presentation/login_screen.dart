@@ -517,7 +517,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// Captcha Verification Dialog
+// Captcha Verification Dialog (Exact match to web frontend UI screenshot)
 class CaptchaVerificationDialog extends ConsumerStatefulWidget {
   final String email;
   final String password;
@@ -547,7 +547,10 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
   }
 
   Future<void> _fetchCategories() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       final categories = await ref.read(authControllerProvider.notifier).getCaptchaCategories();
       setState(() {
@@ -564,7 +567,7 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
 
   Future<void> _verifyAndLogin() async {
     if (_selectedCategory == null) {
-      context.showSnackBar('Please select a captcha category');
+      context.showSnackBar('Please click on your security captcha image to verify');
       return;
     }
 
@@ -593,15 +596,17 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
     final isDark = context.isDark;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       backgroundColor: isDark ? const Color(0xFF131B2E) : Colors.white,
       child: Container(
-        width: 480,
+        width: 620,
+        constraints: const BoxConstraints(maxWidth: 650, maxHeight: 680),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Header
             Row(
               children: [
                 Container(
@@ -627,7 +632,7 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Select the matching category image below',
+                        'Confirm you are a human',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
@@ -637,17 +642,38 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded),
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  tooltip: 'Refresh Captcha',
+                  onPressed: _fetchCategories,
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 20),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+
+            // Instruction Banner
+            Center(
+              child: Text(
+                'Please click on your security captcha image to verify:',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
 
             if (_errorMessage != null)
               Container(
                 padding: const EdgeInsets.all(10),
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFEF2F2),
                   borderRadius: BorderRadius.circular(8),
@@ -656,97 +682,119 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
                 child: Text(_errorMessage!, style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12)),
               ),
 
-            if (_isLoading)
-              const SizedBox(
-                height: 220,
-                child: Center(child: CircularProgressIndicator(color: Color(0xFF6366F1))),
-              )
-            else if (_categories.isEmpty)
-              const SizedBox(
-                height: 120,
-                child: Center(child: Text('No captcha categories available')),
-              )
-            else
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: 0.9,
-                  ),
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    final isSelected = _selectedCategory?['id'] == cat['id'];
-                    final imageUrl = cat['image']?.toString();
-
-                    return InkWell(
-                      onTap: () => setState(() => _selectedCategory = cat),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? const Color(0xFF6366F1) : (isDark ? const Color(0xFF2E3B55) : const Color(0xFFE2E8F0)),
-                            width: isSelected ? 2 : 1,
+            // Grid of 4 columns (matching web frontend UI)
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
+                  : _categories.isEmpty
+                      ? const Center(child: Text('No captcha categories available'))
+                      : GridView.builder(
+                          shrinkWrap: true,
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.85,
                           ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (imageUrl != null && imageUrl.isNotEmpty)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  imageUrl,
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined, size: 28),
+                          itemCount: _categories.length,
+                          itemBuilder: (context, index) {
+                            final cat = _categories[index];
+                            final isSelected = _selectedCategory?['id'] == cat['id'];
+                            final imageUrl = cat['image']?.toString();
+
+                            return InkWell(
+                              onTap: () => setState(() => _selectedCategory = cat),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                                      : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? const Color(0xFF6366F1)
+                                        : (isDark ? const Color(0xFF2E3B55) : const Color(0xFFE2E8F0)),
+                                    width: isSelected ? 2.5 : 1,
+                                  ),
                                 ),
-                              )
-                            else
-                              const Icon(Icons.category_outlined, size: 28, color: Color(0xFF6366F1)),
-                            const SizedBox(height: 6),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                              child: Text(
-                                cat['category_name'] ?? 'Category',
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                padding: const EdgeInsets.all(8),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: imageUrl != null && imageUrl.isNotEmpty
+                                            ? Image.network(
+                                                imageUrl,
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined, size: 32),
+                                              )
+                                            : const Icon(Icons.category_outlined, size: 32, color: Color(0xFF6366F1)),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      cat['category_name'] ?? 'Category',
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                          ],
+                            );
+                          },
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 20),
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
 
-            ElevatedButton(
-              onPressed: _isLoading ? null : _verifyAndLogin,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-              child: const Text('Verify & Sign In', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            // Footer
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Click on your security image to finish signing in',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isDark ? Colors.white : const Color(0xFF0F172A),
+                    side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _verifyAndLogin,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  child: const Text('Verify & Sign In', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ],
             ),
           ],
         ),
