@@ -40,17 +40,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (success && mounted) {
         context.go(RouteNames.dashboard);
-      } else {
-        final authState = ref.read(authControllerProvider);
-        if (authState.errorMessage != null &&
-            authState.errorMessage!.toLowerCase().contains('captcha')) {
-          _showCaptchaDialog();
-        }
       }
     } on CaptchaRequiredException catch (_) {
       _showCaptchaDialog();
     } catch (e) {
-      if (e.toString().toLowerCase().contains('captcha')) {
+      if (e.toString().toLowerCase().contains('captcha verification required') ||
+          e.toString().toLowerCase().contains('captcha required')) {
         _showCaptchaDialog();
       }
     }
@@ -573,7 +568,11 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
 
     final captchaId = int.tryParse(_selectedCategory!['id'].toString());
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final success = await ref.read(authControllerProvider.notifier).login(
             widget.email,
@@ -584,12 +583,17 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
         Navigator.of(context).pop();
         widget.onSuccess();
       } else {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'You have selected the wrong captcha. Please try again.';
+          _selectedCategory = null;
+        });
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = e.toString();
+        _errorMessage = 'You have selected the wrong captcha. Please try again.';
+        _selectedCategory = null;
       });
     }
   }

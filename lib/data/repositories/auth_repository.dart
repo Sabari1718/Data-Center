@@ -64,8 +64,11 @@ class AuthRepository {
     // Check backend explicit failure message
     if (data['result'] != null &&
         data['result'].toString().toLowerCase() == 'failure') {
-      final msg = data['message'] ?? 'Login failed. Please verify your credentials.';
-      throw AuthFailure(msg.toString());
+      final msg = (data['message'] ?? 'Login failed. Please verify your credentials.').toString();
+      if (msg.toLowerCase().contains('captcha') || msg.toLowerCase().contains('verification')) {
+        throw CaptchaRequiredException(msg);
+      }
+      throw AuthFailure(msg);
     }
 
     final token = (data['token'] ??
