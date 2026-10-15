@@ -1,5 +1,5 @@
 class AppConstants {
-  static const String appName = 'Data Center';
+  static const String appName = 'VA Data Center';
   static const String appVersion = '1.0.0';
   static const String defaultUserName = 'lohit';
   static const String defaultUserEmail = 'yudeshprasath@gmail.com';

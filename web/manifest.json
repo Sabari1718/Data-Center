@@ -1,6 +1,6 @@
 {
-    "name": "Data Center",
-    "short_name": "Data Center",
+    "name": "VA Data Center",
+    "short_name": "VA Data Center",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
