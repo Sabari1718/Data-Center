@@ -27,11 +27,15 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(String email, String password, {int? captchaImageId}) async {
     state = AuthState.loading();
     try {
       final repo = ref.read(authRepositoryProvider);
-      final user = await repo.login(email: email, password: password);
+      final user = await repo.login(
+        email: email,
+        password: password,
+        captchaImageId: captchaImageId,
+      );
       state = AuthState.authenticated(user);
       return true;
     } on CaptchaRequiredException catch (e) {

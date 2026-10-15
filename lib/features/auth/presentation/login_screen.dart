@@ -16,8 +16,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(text: 'sabarishwaran1718@gmail.com');
-  final _passwordController = TextEditingController(text: '123456');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _rememberMe = false;
 
@@ -571,11 +571,14 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
       return;
     }
 
+    final captchaId = int.tryParse(_selectedCategory!['id'].toString());
+
     setState(() => _isLoading = true);
     try {
       final success = await ref.read(authControllerProvider.notifier).login(
             widget.email,
             widget.password,
+            captchaImageId: captchaId,
           );
       if (success && mounted) {
         Navigator.of(context).pop();

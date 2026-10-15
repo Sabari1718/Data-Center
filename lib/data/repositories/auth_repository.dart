@@ -34,13 +34,19 @@ class AuthRepository {
   Future<UserModel> login({
     required String email,
     required String password,
+    int? captchaImageId,
   }) async {
+    final Map<String, dynamic> requestData = {
+      'email': email.trim(),
+      'password': password,
+    };
+    if (captchaImageId != null) {
+      requestData['captcha_image_id'] = captchaImageId;
+    }
+
     final response = await apiClient.post(
       ApiEndpoints.login,
-      data: {
-        'email': email.trim(),
-        'password': password,
-      },
+      data: requestData,
     );
 
     final data = response.data;
