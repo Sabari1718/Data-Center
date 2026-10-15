@@ -3,6 +3,7 @@ class ApiEndpoints {
   static const String logout = '/auth/logout';
   static const String profile = '/auth/profile';
   static const String refreshToken = '/auth/refresh';
+  static const String captchaCategories = '/outsideapis/captcha/category';
 
   static const String dashboard = '/dashboard';
   static const String dataCenters = '/data-centers';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/errors/app_failure.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/utils/validators.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -15,8 +16,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _emailController = TextEditingController(text: 'sabarishwaran1718@gmail.com');
+  final _passwordController = TextEditingController(text: '123456');
   bool _obscurePassword = true;
   bool _rememberMe = false;
 
@@ -31,14 +32,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     FocusScope.of(context).unfocus();
-    final success = await ref.read(authControllerProvider.notifier).login(
-          _emailController.text.trim(),
-          _passwordController.text,
-        );
+    try {
+      final success = await ref.read(authControllerProvider.notifier).login(
+            _emailController.text.trim(),
+            _passwordController.text,
+          );
 
-    if (success && mounted) {
-      context.go(RouteNames.dashboard);
+      if (success && mounted) {
+        context.go(RouteNames.dashboard);
+      } else {
+        final authState = ref.read(authControllerProvider);
+        if (authState.errorMessage != null &&
+            authState.errorMessage!.toLowerCase().contains('captcha')) {
+          _showCaptchaDialog();
+        }
+      }
+    } on CaptchaRequiredException catch (_) {
+      _showCaptchaDialog();
+    } catch (e) {
+      if (e.toString().toLowerCase().contains('captcha')) {
+        _showCaptchaDialog();
+      }
     }
+  }
+
+  void _showCaptchaDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CaptchaVerificationDialog(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        onSuccess: () {
+          if (mounted) {
+            context.go(RouteNames.dashboard);
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -57,7 +88,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       backgroundColor: bgMain,
       body: Stack(
         children: [
-          // Ambient Glow Circles (Tech aesthetic)
           Positioned(
             top: -100,
             right: -100,
@@ -103,11 +133,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Header & Brand
                       Center(
                         child: Column(
                           children: [
-                            // Glowing Server Logo
                             Container(
                               width: 60,
                               height: 60,
@@ -135,8 +163,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-
-                            // Enterprise Badge
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
@@ -173,8 +199,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-
-                            // Title & Subtitle
                             Text(
                               'Sign in to your Workspace',
                               textAlign: TextAlign.center,
@@ -199,7 +223,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 28),
 
-                      // Main Login Card
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
@@ -221,7 +244,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // Error Banner if login fails
                               if (authState.errorMessage != null) ...[
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -251,7 +273,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 const SizedBox(height: 18),
                               ],
 
-                              // Email Label
                               Text(
                                 'Email Address',
                                 style: TextStyle(
@@ -261,8 +282,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               const SizedBox(height: 6),
-
-                              // Email Input Box (Empty by default)
                               TextFormField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
@@ -306,7 +325,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                               const SizedBox(height: 18),
 
-                              // Password Label
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -334,8 +352,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ],
                               ),
                               const SizedBox(height: 6),
-
-                              // Password Input Box
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
@@ -389,7 +405,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                               const SizedBox(height: 14),
 
-                              // Remember Me Checkbox
                               Row(
                                 children: [
                                   SizedBox(
@@ -414,7 +429,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                               const SizedBox(height: 22),
 
-                              // Sign In Button
                               ElevatedButton(
                                 onPressed: authState.isLoading ? null : _handleLogin,
                                 style: ElevatedButton.styleFrom(
@@ -458,7 +472,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Security & API Connection Footer
                       Center(
                         child: Column(
                           children: [
@@ -499,6 +512,244 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Captcha Verification Dialog
+class CaptchaVerificationDialog extends ConsumerStatefulWidget {
+  final String email;
+  final String password;
+  final VoidCallback onSuccess;
+
+  const CaptchaVerificationDialog({
+    super.key,
+    required this.email,
+    required this.password,
+    required this.onSuccess,
+  });
+
+  @override
+  ConsumerState<CaptchaVerificationDialog> createState() => _CaptchaVerificationDialogState();
+}
+
+class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationDialog> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _categories = [];
+  Map<String, dynamic>? _selectedCategory;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCategories();
+  }
+
+  Future<void> _fetchCategories() async {
+    setState(() => _isLoading = true);
+    try {
+      final categories = await ref.read(authControllerProvider.notifier).getCaptchaCategories();
+      setState(() {
+        _categories = categories;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to load captcha categories';
+      });
+    }
+  }
+
+  Future<void> _verifyAndLogin() async {
+    if (_selectedCategory == null) {
+      context.showSnackBar('Please select a captcha category');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final success = await ref.read(authControllerProvider.notifier).login(
+            widget.email,
+            widget.password,
+          );
+      if (success && mounted) {
+        Navigator.of(context).pop();
+        widget.onSuccess();
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = context.isDark;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: isDark ? const Color(0xFF131B2E) : Colors.white,
+      child: Container(
+        width: 480,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.security_rounded, color: Color(0xFF6366F1), size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Security Verification',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Select the matching category image below',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            if (_errorMessage != null)
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFCA5A5)),
+                ),
+                child: Text(_errorMessage!, style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12)),
+              ),
+
+            if (_isLoading)
+              const SizedBox(
+                height: 220,
+                child: Center(child: CircularProgressIndicator(color: Color(0xFF6366F1))),
+              )
+            else if (_categories.isEmpty)
+              const SizedBox(
+                height: 120,
+                child: Center(child: Text('No captcha categories available')),
+              )
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 0.9,
+                  ),
+                  itemCount: _categories.length,
+                  itemBuilder: (context, index) {
+                    final cat = _categories[index];
+                    final isSelected = _selectedCategory?['id'] == cat['id'];
+                    final imageUrl = cat['image']?.toString();
+
+                    return InkWell(
+                      onTap: () => setState(() => _selectedCategory = cat),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF6366F1) : (isDark ? const Color(0xFF2E3B55) : const Color(0xFFE2E8F0)),
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (imageUrl != null && imageUrl.isNotEmpty)
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  imageUrl,
+                                  width: 44,
+                                  height: 44,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined, size: 28),
+                                ),
+                              )
+                            else
+                              const Icon(Icons.category_outlined, size: 28, color: Color(0xFF6366F1)),
+                            const SizedBox(height: 6),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              child: Text(
+                                cat['category_name'] ?? 'Category',
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 20),
+
+            ElevatedButton(
+              onPressed: _isLoading ? null : _verifyAndLogin,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              child: const Text('Verify & Sign In', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            ),
+          ],
+        ),
       ),
     );
   }

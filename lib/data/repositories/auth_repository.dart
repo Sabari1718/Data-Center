@@ -48,6 +48,13 @@ class AuthRepository {
       throw const AuthFailure('Invalid response format received from server.');
     }
 
+    if (data['captcha_required'] == true) {
+      throw CaptchaRequiredException(
+        data['message'] ?? 'Captcha verification required',
+        captchaImage: data['captcha_image'] is Map ? data['captcha_image'] : null,
+      );
+    }
+
     // Check backend explicit failure message
     if (data['result'] != null &&
         data['result'].toString().toLowerCase() == 'failure') {
@@ -98,6 +105,17 @@ class AuthRepository {
   Future<void> logout() async {
     await secureStorage.clearAuthTokens();
     await preferences.remove(AppConstants.userDataKey);
+  }
+
+  Future<List<Map<String, dynamic>>> getCaptchaCategories() async {
+    try {
+      final response = await apiClient.get(ApiEndpoints.captchaCategories);
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['data'] is List) {
+        return List<Map<String, dynamic>>.from(data['data']);
+      }
+    } catch (_) {}
+    return [];
   }
 
   Future<UserModel?> getCurrentUser() async {

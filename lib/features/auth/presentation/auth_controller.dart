@@ -34,6 +34,9 @@ class AuthController extends Notifier<AuthState> {
       final user = await repo.login(email: email, password: password);
       state = AuthState.authenticated(user);
       return true;
+    } on CaptchaRequiredException catch (e) {
+      state = AuthState.error(e.message);
+      rethrow;
     } on ApiException catch (e) {
       state = AuthState.error(e.message);
       return false;
@@ -44,6 +47,11 @@ class AuthController extends Notifier<AuthState> {
       state = AuthState.error(e.toString().replaceAll('Exception: ', ''));
       return false;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getCaptchaCategories() async {
+    final repo = ref.read(authRepositoryProvider);
+    return await repo.getCaptchaCategories();
   }
 
   Future<void> logout() async {

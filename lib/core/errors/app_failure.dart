@@ -24,3 +24,8 @@ class ServerFailure extends AppFailure {
 class ValidationFailure extends AppFailure {
   const ValidationFailure(super.message, {super.statusCode, super.originalError});
 }
+
+class CaptchaRequiredException extends AppFailure {
+  final Map<String, dynamic>? captchaImage;
+  const CaptchaRequiredException(super.message, {this.captchaImage, super.statusCode});
+}
