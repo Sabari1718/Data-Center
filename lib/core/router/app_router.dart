@@ -40,9 +40,9 @@ class RouterNotifier extends ChangeNotifier {
     final isLoggingIn = state.matchedLocation == RouteNames.login;
     final isAuthenticated = authState.status == AuthStatus.authenticated;
 
-    // While initial auth status is being loaded from storage
+    // While initial auth status is being loaded from storage, default to login
     if (authState.status == AuthStatus.initial) {
-      return null;
+      return isLoggingIn ? null : RouteNames.login;
     }
 
     if (!isAuthenticated && !isLoggingIn) {
@@ -63,7 +63,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     refreshListenable: notifier,
-    initialLocation: RouteNames.dashboard,
+    initialLocation: RouteNames.login,
     redirect: notifier.redirect,
     routes: [
       GoRoute(

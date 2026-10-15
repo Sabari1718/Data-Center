@@ -32,6 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     FocusScope.of(context).unfocus();
+    ref.read(authControllerProvider.notifier).clearError();
     try {
       final success = await ref.read(authControllerProvider.notifier).login(
             _emailController.text.trim(),
@@ -42,11 +43,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go(RouteNames.dashboard);
       }
     } on CaptchaRequiredException catch (_) {
-      _showCaptchaDialog();
+      ref.read(authControllerProvider.notifier).clearError();
+      if (mounted) _showCaptchaDialog();
     } catch (e) {
       if (e.toString().toLowerCase().contains('captcha verification required') ||
-          e.toString().toLowerCase().contains('captcha required')) {
-        _showCaptchaDialog();
+          e.toString().toLowerCase().contains('captcha required') ||
+          e.toString().toLowerCase().contains('select captcha')) {
+        ref.read(authControllerProvider.notifier).clearError();
+        if (mounted) _showCaptchaDialog();
       }
     }
   }
@@ -746,7 +750,7 @@ class _CaptchaVerificationDialogState extends ConsumerState<CaptchaVerificationD
                                                     imageUrl,
                                                     fit: BoxFit.cover,
                                                     width: double.infinity,
-                                                    errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined, size: 28),
+                                                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported_outlined, size: 28),
                                                   )
                                                 : const Icon(Icons.category_outlined, size: 28, color: Color(0xFF6366F1)),
                                           ),

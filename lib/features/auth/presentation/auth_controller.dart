@@ -38,8 +38,8 @@ class AuthController extends Notifier<AuthState> {
       );
       state = AuthState.authenticated(user);
       return true;
-    } on CaptchaRequiredException catch (e) {
-      state = AuthState.error(e.message);
+    } on CaptchaRequiredException {
+      state = AuthState.unauthenticated();
       rethrow;
     } on ApiException catch (e) {
       state = AuthState.error(e.message);
@@ -69,5 +69,11 @@ class AuthController extends Notifier<AuthState> {
     final repo = ref.read(authRepositoryProvider);
     final saved = await repo.updateProfile(updatedUser);
     state = AuthState.authenticated(saved);
+  }
+
+  void clearError() {
+    if (state.errorMessage != null) {
+      state = AuthState.unauthenticated();
+    }
   }
 }
