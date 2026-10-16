@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -9,14 +7,11 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/data_center_model.dart';
 import '../../../data/models/server_model.dart';
 import '../../../data/repositories/server_repository.dart';
-import '../../../shared/components/server_card.dart';
 import '../../../shared/extensions/context_extensions.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_outlined_button.dart';
-import '../../../shared/widgets/app_search_bar.dart';
 import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/error_state.dart';
 import '../../../shared/widgets/loading_skeleton.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -93,6 +88,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
 
   final List<String> _tabs = [
     'Add Server',
+    'Configured Nodes',
     'Add RAM',
     'Add Storage',
     'Add Network',
@@ -100,10 +96,17 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
 
   final List<IconData> _tabIcons = [
     Icons.storage_rounded,
+    Icons.layers_rounded,
     Icons.memory_rounded,
     Icons.dns_outlined,
     Icons.show_chart_rounded,
   ];
+
+  // Server Nodes Search & Filter State
+  final _serverSearchCtrl = TextEditingController();
+  String _nodeStatusFilter = 'All';
+  String _nodeTypeFilter = 'All';
+  String _nodeDcFilter = 'All';
 
   // Add Server Form controllers & state
   ServerModel? _editingServer;
@@ -202,6 +205,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   @override
   void dispose() {
     _serverScrollController.dispose();
+    _serverSearchCtrl.dispose();
     _serverNameCtrl.dispose();
     _processorCtrl.dispose();
     _coresCtrl.dispose();
@@ -251,8 +255,10 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   Widget build(BuildContext context) {
     final isDark = context.isDark;
     final state = ref.watch(serverControllerProvider);
+    final isDesktop = MediaQuery.of(context).size.width >= 850;
 
     return Scaffold(
+      backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -268,23 +274,168 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               ],
             ),
 
-            // Sub Tab Bar (Matches left navigation from web app)
-            SubTabBar(
-              tabs: _tabs,
-              icons: _tabIcons,
-              selectedIndex: _selectedTabIndex,
-              onTabSelected: (index) {
-                setState(() => _selectedTabIndex = index);
-              },
-            ),
+            // Sub Tab Bar (Mobile/Tablet view)
+            if (!isDesktop)
+              SubTabBar(
+                tabs: _tabs,
+                icons: _tabIcons,
+                selectedIndex: _selectedTabIndex,
+                onTabSelected: (index) {
+                  setState(() => _selectedTabIndex = index);
+                },
+              ),
 
-            // Tab Content
+            // Tab Content with Desktop Sidebar
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: _buildTabContent(context, state, isDark),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isDesktop) _buildSidebar(context, state, isDark),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      child: _buildTabContent(context, state, isDark),
+                    ),
+                  ),
+                ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context, ServerState state, bool isDark) {
+    final serverList = state.servers.value ?? [];
+    return Container(
+      width: 200,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.surfaceDark : Colors.white,
+        border: Border(
+          right: BorderSide(
+            color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Text(
+              'SERVER',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF94A3B8),
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          _buildSideMenuItem(
+            'Add Server',
+            Icons.storage_rounded,
+            _selectedTabIndex == 0,
+            () => setState(() => _selectedTabIndex = 0),
+            isDark,
+          ),
+          _buildSideMenuItem(
+            'Configured Nodes',
+            Icons.layers_rounded,
+            _selectedTabIndex == 1,
+            () => setState(() => _selectedTabIndex = 1),
+            isDark,
+            badge: '${serverList.length}',
+          ),
+          _buildSideMenuItem(
+            'Add RAM',
+            Icons.memory_rounded,
+            _selectedTabIndex == 2,
+            () => setState(() => _selectedTabIndex = 2),
+            isDark,
+          ),
+          _buildSideMenuItem(
+            'Add Storage',
+            Icons.dns_outlined,
+            _selectedTabIndex == 3,
+            () => setState(() => _selectedTabIndex = 3),
+            isDark,
+          ),
+          _buildSideMenuItem(
+            'Add Network',
+            Icons.show_chart_rounded,
+            _selectedTabIndex == 4,
+            () => setState(() => _selectedTabIndex = 4),
+            isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSideMenuItem(
+    String title,
+    IconData icon,
+    bool isSelected,
+    VoidCallback onTap,
+    bool isDark, {
+    String? badge,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        margin: const EdgeInsets.only(right: 12, bottom: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? const Color(0xFF312E81) : const Color(0xFFEEF2FF))
+              : Colors.transparent,
+          borderRadius: const BorderRadius.horizontal(right: Radius.circular(24)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFF64748B),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? const Color(0xFF4F46E5)
+                      : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (badge != null && badge.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF4F46E5)
+                      : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  badge,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected
+                        ? Colors.white
+                        : (isDark ? Colors.white70 : const Color(0xFF475569)),
+                  ),
+                ),
+              )
+            else if (isSelected)
+              const Icon(Icons.circle, size: 6, color: Color(0xFF4F46E5)),
           ],
         ),
       ),
@@ -300,10 +451,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
       case 0:
         return _buildAddServerTab(context, state, isDark);
       case 1:
-        return _buildAddRamTab(context, isDark);
+        return _buildConfiguredNodesTab(context, state, isDark);
       case 2:
-        return _buildAddStorageTab(context, isDark);
+        return _buildAddRamTab(context, isDark);
       case 3:
+        return _buildAddStorageTab(context, isDark);
+      case 4:
         return _buildAddNetworkTab(context, isDark);
       default:
         return const SizedBox.shrink();
@@ -578,39 +731,56 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         const SizedBox(height: 20),
 
         // Configured Server Nodes Section
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
           children: [
-            Row(
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 Icon(
                   Icons.layers_rounded,
                   size: 20,
                   color: isDark ? AppColors.primaryLight : AppColors.primary,
                 ),
-                const SizedBox(width: 8),
                 Text(
                   'Configured Server Nodes',
                   style: AppTextStyles.titleMedium(isDark).copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.surfaceDark : AppColors.backgroundLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                    ),
+                  ),
+                  child: Text(
+                    '${serverList.length} Nodes',
+                    style: AppTextStyles.labelSmall(isDark).copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
               ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.surfaceDark : AppColors.backgroundLight,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
-                ),
-              ),
-              child: Text(
-                '${serverList.length} Nodes',
-                style: AppTextStyles.labelSmall(isDark).copyWith(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedTabIndex = 1),
+              icon: const Icon(Icons.tune_rounded, size: 16, color: Color(0xFF4F46E5)),
+              label: Text(
+                'View & Filter All (${serverList.length}) →',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4F46E5),
                 ),
               ),
             ),
@@ -618,7 +788,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Configured Nodes Preview Cards (Live data from GET /api/server-details)
+        // Configured Nodes Preview Cards (Live data from GET /api/server-details, showing up to 3 cleanly)
         state.servers.when(
           loading: () => LoadingSkeleton.card(height: 120),
           error: (err, _) => ErrorState(
@@ -645,23 +815,71 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               );
             }
 
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                int cols = constraints.maxWidth > 800 ? 3 : (constraints.maxWidth > 500 ? 2 : 1);
-                double spacing = 12.0;
-                double width = (constraints.maxWidth - (spacing * (cols - 1))) / cols;
+            final previewList = list.take(3).toList();
 
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: list.map((srv) {
-                    return SizedBox(
-                      width: width,
-                      child: _buildConfiguredServerTile(srv, isDark),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    int cols = constraints.maxWidth > 800 ? 3 : (constraints.maxWidth > 500 ? 2 : 1);
+                    double spacing = 12.0;
+                    double width = (constraints.maxWidth - (spacing * (cols - 1))) / cols;
+
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: previewList.map((srv) {
+                        return SizedBox(
+                          width: width,
+                          child: _buildConfiguredServerTile(srv, isDark),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
-                );
-              },
+                  },
+                ),
+                if (list.length > 3) ...[
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () => setState(() => _selectedTabIndex = 1),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Showing 3 of ${list.length} configured nodes. Switch to "Configured Nodes" tab to search, filter, and manage all.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.white70 : const Color(0xFF475569),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Open Tab →',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF4F46E5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             );
           },
         ),
@@ -1027,113 +1245,432 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
 
 
   // 2. Configured Nodes Fleet List Tab
-  // ignore: unused_element
   Widget _buildConfiguredNodesTab(
     BuildContext context,
     ServerState state,
     bool isDark,
   ) {
-    final statusFilters = ['All', 'Running', 'Warning', 'Stopped', 'Maintenance'];
+    final dcState = ref.watch(dataCenterControllerProvider);
+    final dcList = dcState.dataCenters.value ?? [];
+    final allServers = state.servers.value ?? [];
 
-    return Column(
-      children: [
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: AppSearchBar(
-            hintText: 'Search server name, IP, or hostname...',
-            onChanged: (val) =>
-                ref.read(serverControllerProvider.notifier).search(val),
-          ),
-        ),
+    // Filter servers based on search query and filter criteria
+    final query = _serverSearchCtrl.text.trim().toLowerCase();
+    final filteredServers = allServers.where((srv) {
+      if (query.isNotEmpty) {
+        final matchesQuery = srv.name.toLowerCase().contains(query) ||
+            srv.ipAddress.toLowerCase().contains(query) ||
+            srv.hostname.toLowerCase().contains(query) ||
+            srv.cpuModel.toLowerCase().contains(query) ||
+            (srv.macAddress ?? '').toLowerCase().contains(query) ||
+            srv.dataCenterName.toLowerCase().contains(query) ||
+            srv.serverType.toLowerCase().contains(query);
+        if (!matchesQuery) return false;
+      }
+      if (_nodeStatusFilter != 'All') {
+        if (srv.status.toLowerCase() != _nodeStatusFilter.toLowerCase()) return false;
+      }
+      if (_nodeTypeFilter != 'All') {
+        if (srv.serverType.toLowerCase() != _nodeTypeFilter.toLowerCase()) return false;
+      }
+      if (_nodeDcFilter != 'All') {
+        if (srv.dataCenterId != _nodeDcFilter && srv.dataCenterName != _nodeDcFilter) return false;
+      }
+      return true;
+    }).toList();
 
-        // Status filter chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-          child: Row(
-            children: statusFilters.map((status) {
-              final isSelected = state.statusFilter.toLowerCase() == status.toLowerCase();
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: ChoiceChip(
-                  label: Text(status),
-                  selected: isSelected,
-                  onSelected: (_) => ref
-                      .read(serverControllerProvider.notifier)
-                      .setStatusFilter(status),
-                  selectedColor: isDark ? AppColors.primaryLight : AppColors.primary,
-                  labelStyle: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+    final hasActiveFilter = query.isNotEmpty ||
+        _nodeStatusFilter != 'All' ||
+        _nodeTypeFilter != 'All' ||
+        _nodeDcFilter != 'All';
+
+    final statusOptions = ['All', 'Active', 'Inactive', 'Maintenance'];
+    final typeOptions = ['All', ..._serverTypes];
+    final dcOptions = ['All', ...dcList.map((d) => d.name)];
+
+    return RefreshIndicator(
+      onRefresh: () => ref.read(serverControllerProvider.notifier).refresh(),
+      child: ListView(
+        padding: AppSpacing.screenPadding,
+        children: [
+          // Header Row
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Icon(
+                        Icons.layers_rounded,
+                        size: 24,
+                        color: isDark ? AppColors.primaryLight : AppColors.primary,
+                      ),
+                      Text(
+                        'Configured Server Nodes',
+                        style: AppTextStyles.titleMedium(isDark).copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDark : const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark ? AppColors.borderDark : const Color(0xFFC7D2FE),
+                          ),
+                        ),
+                        child: Text(
+                          '${filteredServers.length} of ${allServers.length} Nodes',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : const Color(0xFF4F46E5),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Browse, search, and manage all deployed servers across your data centers.',
+                    style: AppTextStyles.bodySmall(isDark),
+                  ),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _resetServerForm();
+                  setState(() => _selectedTabIndex = 0);
+                },
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Server'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F46E5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(
-                      color: isSelected
-                          ? Colors.transparent
-                          : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Search and Filter Bar Card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.cardDark : Colors.white,
+              borderRadius: AppRadius.borderLg,
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : AppColors.borderLight,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Search Input Field
+                Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.surfaceDark : AppColors.backgroundLight,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
                     ),
                   ),
-                  backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _serverSearchCtrl,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Search server name, IP address, processor, MAC, or datacenter...',
+                            hintStyle: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                            ),
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      if (_serverSearchCtrl.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 16),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () {
+                            _serverSearchCtrl.clear();
+                            setState(() {});
+                          },
+                        ),
+                    ],
+                  ),
                 ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 6),
+                const SizedBox(height: 12),
 
-        // Servers list
-        Expanded(
-          child: state.servers.when(
-            loading: () => ListView.separated(
-              padding: AppSpacing.screenPadding,
-              itemCount: 4,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (_, _) => LoadingSkeleton.card(height: 130),
+                // Filter Controls Row
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    // Status Filter Chips
+                    Text(
+                      'Status:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                      ),
+                    ),
+                    ...statusOptions.map((st) {
+                      final isSelected = _nodeStatusFilter.toLowerCase() == st.toLowerCase();
+                      return ChoiceChip(
+                        label: Text(st),
+                        selected: isSelected,
+                        onSelected: (_) => setState(() => _nodeStatusFilter = st),
+                        selectedColor: isDark ? AppColors.primaryLight : const Color(0xFF4F46E5),
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? Colors.white
+                              : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(
+                            color: isSelected
+                                ? Colors.transparent
+                                : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                          ),
+                        ),
+                        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                      );
+                    }),
+
+                    // Server Type Filter Dropdown
+                    Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _nodeTypeFilter != 'All'
+                              ? const Color(0xFF4F46E5)
+                              : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                        ),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: typeOptions.contains(_nodeTypeFilter) ? _nodeTypeFilter : 'All',
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                          dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                          items: typeOptions.map((t) {
+                            return DropdownMenuItem<String>(
+                              value: t,
+                              child: Text(t == 'All' ? 'All Types' : t),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) setState(() => _nodeTypeFilter = val);
+                          },
+                        ),
+                      ),
+                    ),
+
+                    // Data Center Filter Dropdown
+                    if (dcOptions.length > 1)
+                      Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _nodeDcFilter != 'All'
+                                ? const Color(0xFF4F46E5)
+                                : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                          ),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: dcOptions.contains(_nodeDcFilter) ? _nodeDcFilter : 'All',
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                            dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            ),
+                            items: dcOptions.map((dc) {
+                              return DropdownMenuItem<String>(
+                                value: dc,
+                                child: Text(dc == 'All' ? 'All Data Centers' : dc),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) setState(() => _nodeDcFilter = val);
+                            },
+                          ),
+                        ),
+                      ),
+
+                    // Reset Filters Button
+                    if (hasActiveFilter)
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _serverSearchCtrl.clear();
+                            _nodeStatusFilter = 'All';
+                            _nodeTypeFilter = 'All';
+                            _nodeDcFilter = 'All';
+                          });
+                        },
+                        icon: const Icon(Icons.clear_all_rounded, size: 16),
+                        label: const Text('Reset Filters', style: TextStyle(fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
+          ),
+          const SizedBox(height: 16),
+
+          // Servers Content Grid
+          state.servers.when(
+            loading: () => LoadingSkeleton.card(height: 140),
             error: (err, _) => ErrorState(
               message: err.toString(),
               onRetry: () => ref.read(serverControllerProvider.notifier).refresh(),
             ),
-            data: (list) {
-              if (list.isEmpty) {
-                return EmptyState(
-                  icon: Icons.dns_rounded,
-                  title: 'No Servers Found',
-                  description: 'No servers match your current search query or filter criteria.',
-                  primaryButtonText: 'Clear Filters',
-                  onPrimaryPressed: () {
-                    ref.read(serverControllerProvider.notifier).search('');
-                    ref.read(serverControllerProvider.notifier).setStatusFilter('All');
-                  },
+            data: (_) {
+              if (filteredServers.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(40),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.cardDark : Colors.white,
+                    borderRadius: AppRadius.borderLg,
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
+                    ),
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.dns_outlined,
+                          size: 48,
+                          color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          hasActiveFilter ? 'No Servers Match Filters' : 'No Servers Configured Yet',
+                          style: AppTextStyles.titleMedium(isDark).copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          hasActiveFilter
+                              ? 'Try adjusting your search terms or filter criteria.'
+                              : 'Deploy and configure a new server node to get started.',
+                          style: AppTextStyles.bodySmall(isDark),
+                        ),
+                        const SizedBox(height: 16),
+                        if (hasActiveFilter)
+                          OutlinedButton(
+                            onPressed: () {
+                              setState(() {
+                                _serverSearchCtrl.clear();
+                                _nodeStatusFilter = 'All';
+                                _nodeTypeFilter = 'All';
+                                _nodeDcFilter = 'All';
+                              });
+                            },
+                            child: const Text('Clear All Filters'),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              _resetServerForm();
+                              setState(() => _selectedTabIndex = 0);
+                            },
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Add Server Now'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4F46E5),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 );
               }
 
-              return RefreshIndicator(
-                onRefresh: () => ref.read(serverControllerProvider.notifier).refresh(),
-                child: ListView.separated(
-                  padding: AppSpacing.screenPadding,
-                  itemCount: list.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (ctx, i) {
-                    final srv = list[i];
-                    return ServerCard(
-                      server: srv,
-                      onTap: () {
-                        context.push(RouteNames.serverDetails, extra: srv);
-                      },
-                    );
-                  },
-                ),
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  int cols = constraints.maxWidth > 850 ? 3 : (constraints.maxWidth > 550 ? 2 : 1);
+                  double spacing = 14.0;
+                  double width = (constraints.maxWidth - (spacing * (cols - 1))) / cols;
+
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: filteredServers.map((srv) {
+                      return SizedBox(
+                        width: width,
+                        child: _buildConfiguredServerTile(srv, isDark),
+                      );
+                    }).toList(),
+                  );
+                },
               );
             },
           ),
-        ),
-      ],
+          const SizedBox(height: 32),
+        ],
+      ),
     );
   }
 

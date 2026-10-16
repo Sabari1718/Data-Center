@@ -14,8 +14,17 @@ class DomainsScreen extends ConsumerStatefulWidget {
 }
 
 class _DomainsScreenState extends ConsumerState<DomainsScreen> {
-  int _selectedTabIndex = 0; // 0 = Add Domain, 1 = Add Subdomain
+  int _selectedTabIndex = 0; // 0 = Add Domain, 1 = Configured Domains, 2 = Add Subdomain, 3 = Configured Subdomains
   String _lastSavedTime = 'Never';
+
+  // --- Domain Search & Filter State ---
+  final _domainSearchCtrl = TextEditingController();
+  String _domainRegistrarFilter = 'All';
+  String _domainStatusFilter = 'All';
+  String _domainDurationFilter = 'All';
+
+  // --- Subdomain Search State ---
+  final _subdomainSearchCtrl = TextEditingController();
 
   // --- Add Domain Form State ---
   final _domainNameCtrl = TextEditingController();
@@ -46,6 +55,8 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
 
   @override
   void dispose() {
+    _domainSearchCtrl.dispose();
+    _subdomainSearchCtrl.dispose();
     _domainNameCtrl.dispose();
     _customExtCtrl.dispose();
     _purchaseDateCtrl.dispose();
@@ -217,16 +228,27 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
     final extensions = domainState.extensions.asData?.value ?? [];
     final subdomains = domainState.subdomains.asData?.value ?? [];
 
+    String headerTitle = 'Add Domain';
+    String headerSubtitle = 'Register and track your domain portfolios and renewal dates.';
+    if (_selectedTabIndex == 1) {
+      headerTitle = 'Configured Domains';
+      headerSubtitle = 'Search, filter, and manage your domain portfolios and DNS records.';
+    } else if (_selectedTabIndex == 2) {
+      headerTitle = 'Add Subdomain';
+      headerSubtitle = 'Create and track subdomains for your existing primary domain portfolio.';
+    } else if (_selectedTabIndex == 3) {
+      headerTitle = 'Configured Subdomains';
+      headerSubtitle = 'View and manage all active subdomains and routing targets.';
+    }
+
     return Scaffold(
       backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
             AppHeader(
-              title: _selectedTabIndex == 0 ? 'Add Domain' : 'Add Subdomain',
-              subtitle: _selectedTabIndex == 0
-                  ? 'Register and track your domain portfolios and renewal dates.'
-                  : 'Create and track subdomains for your existing primary domain portfolio.',
+              title: headerTitle,
+              subtitle: headerSubtitle,
               actions: [
                 IconButton(
                   tooltip: 'Refresh',
@@ -246,27 +268,40 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                     ),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildTopMenuItem(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildTopMenuItem(
                         'Add Domain',
                         Icons.language_rounded,
                         _selectedTabIndex == 0,
                         () => setState(() => _selectedTabIndex = 0),
                         isDark,
                       ),
-                    ),
-                    Expanded(
-                      child: _buildTopMenuItem(
-                        'Add Subdomain',
-                        Icons.link_rounded,
+                      _buildTopMenuItem(
+                        'Configured Domains (${domains.length})',
+                        Icons.grid_view_rounded,
                         _selectedTabIndex == 1,
                         () => setState(() => _selectedTabIndex = 1),
                         isDark,
                       ),
-                    ),
-                  ],
+                      _buildTopMenuItem(
+                        'Add Subdomain',
+                        Icons.link_rounded,
+                        _selectedTabIndex == 2,
+                        () => setState(() => _selectedTabIndex = 2),
+                        isDark,
+                      ),
+                      _buildTopMenuItem(
+                        'Configured Subdomains (${subdomains.length})',
+                        Icons.account_tree_rounded,
+                        _selectedTabIndex == 3,
+                        () => setState(() => _selectedTabIndex = 3),
+                        isDark,
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -277,7 +312,7 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                   // Sidebar navigation (Desktop only)
                   if (!isMobile)
                     Container(
-                      width: 200,
+                      width: 220,
                       decoration: BoxDecoration(
                         border: Border(
                           right: BorderSide(
@@ -310,11 +345,27 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                             isDark,
                           ),
                           _buildSideMenuItem(
-                            'Add Subdomain',
-                            Icons.link_rounded,
+                            'Configured Domains',
+                            Icons.grid_view_rounded,
                             _selectedTabIndex == 1,
                             () => setState(() => _selectedTabIndex = 1),
                             isDark,
+                            badge: '${domains.length}',
+                          ),
+                          _buildSideMenuItem(
+                            'Add Subdomain',
+                            Icons.link_rounded,
+                            _selectedTabIndex == 2,
+                            () => setState(() => _selectedTabIndex = 2),
+                            isDark,
+                          ),
+                          _buildSideMenuItem(
+                            'Configured Subdomains',
+                            Icons.account_tree_rounded,
+                            _selectedTabIndex == 3,
+                            () => setState(() => _selectedTabIndex = 3),
+                            isDark,
+                            badge: '${subdomains.length}',
                           ),
                         ],
                       ),
@@ -335,152 +386,172 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                               : ListView(
                                   padding: EdgeInsets.all(isMobile ? 16 : 24),
                                   children: [
-                                    _selectedTabIndex == 0
-                                        ? _buildAddDomainTab(
-                                            context,
-                                            isDark,
-                                            isMobile,
-                                            domains,
-                                            extensions,
-                                            domainState,
-                                          )
-                                        : _buildAddSubdomainTab(
-                                            context,
-                                            isDark,
-                                            isMobile,
-                                            domains,
-                                            subdomains,
-                                            domainState,
-                                          ),
+                                    if (_selectedTabIndex == 0)
+                                      _buildAddDomainTab(
+                                        context,
+                                        isDark,
+                                        isMobile,
+                                        domains,
+                                        extensions,
+                                        domainState,
+                                      )
+                                    else if (_selectedTabIndex == 1)
+                                      _buildConfiguredDomainsTab(
+                                        context,
+                                        isDark,
+                                        isMobile,
+                                        domains,
+                                        extensions,
+                                        domainState,
+                                      )
+                                    else if (_selectedTabIndex == 2)
+                                      _buildAddSubdomainTab(
+                                        context,
+                                        isDark,
+                                        isMobile,
+                                        domains,
+                                        subdomains,
+                                        domainState,
+                                      )
+                                    else if (_selectedTabIndex == 3)
+                                      _buildConfiguredSubdomainsTab(
+                                        context,
+                                        isDark,
+                                        isMobile,
+                                        domains,
+                                        subdomains,
+                                        domainState,
+                                      ),
                                   ],
                                 ),
                         ),
 
-                        // Fixed Footer
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isMobile ? 16 : 24,
-                            vertical: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              top: BorderSide(
-                                color: isDark
-                                    ? AppColors.borderDark
-                                    : const Color(0xFFE2E8F0),
-                              ),
+                        // Fixed Footer (Only on Add forms)
+                        if (_selectedTabIndex == 0 || _selectedTabIndex == 2)
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 16 : 24,
+                              vertical: 16,
                             ),
-                            color: isDark ? AppColors.cardDark : Colors.white,
-                          ),
-                          child: Wrap(
-                            alignment: WrapAlignment.spaceBetween,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 16,
-                            runSpacing: 16,
-                            children: [
-                              if (!isMobile)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            decoration: BoxDecoration(
+                              border: Border(
+                                top: BorderSide(
+                                  color: isDark
+                                      ? AppColors.borderDark
+                                      : const Color(0xFFE2E8F0),
+                                ),
+                              ),
+                              color: isDark ? AppColors.cardDark : Colors.white,
+                            ),
+                            child: Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 16,
+                              runSpacing: 16,
+                              children: [
+                                if (!isMobile)
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Last saved: $_lastSavedTime',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark
+                                              ? Colors.white
+                                              : const Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _selectedTabIndex == 0
+                                            ? '${domains.length} Domains Configured'
+                                            : '${subdomains.length} Subdomains Configured',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
                                   children: [
-                                    Text(
-                                      'Last saved: $_lastSavedTime',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: isDark
+                                    OutlinedButton(
+                                      onPressed: () {
+                                        if (_selectedTabIndex == 0) {
+                                          _discardDomainForm();
+                                        } else {
+                                          _discardSubdomainForm();
+                                        }
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: isDark
                                             ? Colors.white
                                             : const Color(0xFF0F172A),
+                                        side: BorderSide(
+                                          color: isDark
+                                              ? AppColors.borderDark
+                                              : const Color(0xFFE2E8F0),
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: isMobile ? 12 : 16,
+                                          vertical: 14,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Discard Changes',
+                                        style: TextStyle(fontWeight: FontWeight.w600),
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _selectedTabIndex == 0
-                                          ? '${domains.length} Domains Configured'
-                                          : '${subdomains.length} Subdomains Configured',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF64748B),
+                                    ElevatedButton(
+                                      onPressed: domainState.isLoadingAction
+                                          ? null
+                                          : () {
+                                              if (_selectedTabIndex == 0) {
+                                                _saveDomain();
+                                              } else {
+                                                _saveSubdomain(domains);
+                                              }
+                                            },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF6366F1),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: isMobile ? 16 : 24,
+                                          vertical: 14,
+                                        ),
                                       ),
+                                      child: domainState.isLoadingAction
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Text(
+                                              _selectedTabIndex == 0
+                                                  ? 'Save Domain'
+                                                  : 'Save Subdomain',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600),
+                                            ),
                                     ),
                                   ],
                                 ),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  OutlinedButton(
-                                    onPressed: () {
-                                      if (_selectedTabIndex == 0) {
-                                        _discardDomainForm();
-                                      } else {
-                                        _discardSubdomainForm();
-                                      }
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: isDark
-                                          ? Colors.white
-                                          : const Color(0xFF0F172A),
-                                      side: BorderSide(
-                                        color: isDark
-                                            ? AppColors.borderDark
-                                            : const Color(0xFFE2E8F0),
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isMobile ? 12 : 16,
-                                        vertical: 14,
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Discard Changes',
-                                      style: TextStyle(fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: domainState.isLoadingAction
-                                        ? null
-                                        : () {
-                                            if (_selectedTabIndex == 0) {
-                                              _saveDomain();
-                                            } else {
-                                              _saveSubdomain(domains);
-                                            }
-                                          },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF6366F1),
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isMobile ? 16 : 24,
-                                        vertical: 14,
-                                      ),
-                                    ),
-                                    child: domainState.isLoadingAction
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : Text(
-                                            _selectedTabIndex == 0
-                                                ? 'Save Domain'
-                                                : 'Save Subdomain',
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w600),
-                                          ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -503,7 +574,7 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
@@ -515,6 +586,7 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
           ),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
@@ -525,17 +597,14 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                   : const Color(0xFF64748B),
             ),
             const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                title,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected
-                      ? const Color(0xFF4F46E5)
-                      : (isDark ? Colors.white : const Color(0xFF0F172A)),
-                ),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: isSelected
+                    ? const Color(0xFF4F46E5)
+                    : (isDark ? Colors.white : const Color(0xFF0F172A)),
               ),
             ),
           ],
@@ -549,12 +618,13 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
     IconData icon,
     bool isSelected,
     VoidCallback onTap,
-    bool isDark,
-  ) {
+    bool isDark, {
+    String? badge,
+  }) {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         margin: const EdgeInsets.only(right: 12, bottom: 4),
         decoration: BoxDecoration(
           color: isSelected
@@ -572,19 +642,41 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                   ? const Color(0xFF4F46E5)
                   : const Color(0xFF64748B),
             ),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected
-                    ? const Color(0xFF4F46E5)
-                    : (isDark ? Colors.white : const Color(0xFF0F172A)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? const Color(0xFF4F46E5)
+                      : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (isSelected) const Spacer(),
-            if (isSelected)
+            if (badge != null && badge.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF4F46E5)
+                      : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  badge,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected
+                        ? Colors.white
+                        : (isDark ? Colors.white70 : const Color(0xFF475569)),
+                  ),
+                ),
+              )
+            else if (isSelected)
               const Icon(Icons.circle, size: 6, color: Color(0xFF4F46E5)),
           ],
         ),
@@ -760,8 +852,10 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
           crossAxisAlignment: WrapCrossAlignment.center,
           runSpacing: 16,
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -775,7 +869,6 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                     size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
                 Text(
                   'Configured Domains',
                   style: TextStyle(
@@ -784,28 +877,40 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                     color: isDark ? Colors.white : const Color(0xFF0F172A),
                   ),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Text(
+                    '${domains.length} Domains',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
               ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
-                ),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Text(
-                '${domains.length} Domains',
-                style: TextStyle(
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedTabIndex = 1),
+              icon: const Icon(Icons.tune_rounded, size: 16, color: Color(0xFF4F46E5)),
+              label: Text(
+                'View & Filter All (${domains.length}) →',
+                style: const TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4F46E5),
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         if (domains.isEmpty)
           Container(
@@ -821,6 +926,473 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
             child: const Text('No domains configured yet.'),
           )
         else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final double cardWidth = constraints.maxWidth > 700
+                      ? (constraints.maxWidth - 16) / 2
+                      : constraints.maxWidth;
+                  final previewList = domains.take(2).toList();
+                  return Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: previewList.map((domain) {
+                      return SizedBox(
+                        width: cardWidth,
+                        child: _buildDomainCard(domain, isDark),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              if (domains.length > 2) ...[
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () => setState(() => _selectedTabIndex = 1),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 16, color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Showing 2 of ${domains.length} configured domains. Switch to "Configured Domains" tab to search, filter, and manage all.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : const Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Open Tab →',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF4F46E5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        const SizedBox(height: 48),
+      ],
+    );
+  }
+
+  // --- Dedicated Configured Domains Tab ---
+  Widget _buildConfiguredDomainsTab(
+    BuildContext context,
+    bool isDark,
+    bool isMobile,
+    List<DomainModel> domains,
+    List<DomainExtensionModel> extensions,
+    DomainState domainState,
+  ) {
+    final registrars = domainState.registrars.asData?.value ??
+        ['godaddy', 'namecheap', 'cloudflare', 'google domains'];
+
+    final query = _domainSearchCtrl.text.trim().toLowerCase();
+    final filteredDomains = domains.where((domain) {
+      if (query.isNotEmpty) {
+        final matchesQuery = domain.displayName.toLowerCase().contains(query) ||
+            domain.domainName.toLowerCase().contains(query) ||
+            domain.registrar.toLowerCase().contains(query) ||
+            (domain.customExtension ?? '').toLowerCase().contains(query) ||
+            (domain.extension ?? '').toLowerCase().contains(query);
+        if (!matchesQuery) return false;
+      }
+      if (_domainRegistrarFilter != 'All') {
+        if (domain.registrar.toLowerCase() != _domainRegistrarFilter.toLowerCase()) return false;
+      }
+      if (_domainStatusFilter != 'All') {
+        final st = domain.status.toLowerCase();
+        if (_domainStatusFilter == 'Active' && st != 'active') return false;
+        if (_domainStatusFilter == 'Expiring Soon' && st != 'expiring_soon') return false;
+        if (_domainStatusFilter == 'Expired' && st != 'expired') return false;
+      }
+      if (_domainDurationFilter != 'All') {
+        final dur = int.tryParse(_domainDurationFilter.split(' ').first) ?? 0;
+        if (domain.durationYears != dur) return false;
+      }
+      return true;
+    }).toList();
+
+    final hasActiveFilter = query.isNotEmpty ||
+        _domainRegistrarFilter != 'All' ||
+        _domainStatusFilter != 'All' ||
+        _domainDurationFilter != 'All';
+
+    final statusOptions = ['All', 'Active', 'Expiring Soon', 'Expired'];
+    final registrarOptions = ['All', ...registrars];
+    final durationOptions = ['All', '1 Year', '2 Years', '3 Years', '5 Years', '10 Years'];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.language,
+                        color: Color(0xFF4F46E5),
+                        size: 20,
+                      ),
+                    ),
+                    Text(
+                      'Configured Domains',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isDark ? AppColors.borderDark : const Color(0xFFC7D2FE),
+                        ),
+                      ),
+                      child: Text(
+                        '${filteredDomains.length} of ${domains.length} Domains',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : const Color(0xFF4F46E5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Search, filter, and manage your domain portfolios and DNS records.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+            ElevatedButton.icon(
+              onPressed: () => setState(() => _selectedTabIndex = 0),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Domain'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4F46E5),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Search & Filter Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Search Input
+              Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.surfaceDark : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: Color(0xFF94A3B8),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _domainSearchCtrl,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Search domain name, registrar, or extension...',
+                          hintStyle: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    if (_domainSearchCtrl.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {
+                          _domainSearchCtrl.clear();
+                          setState(() {});
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Filter row
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Status chips
+                  Text(
+                    'Status:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                    ),
+                  ),
+                  ...statusOptions.map((st) {
+                    final isSelected = _domainStatusFilter == st;
+                    return ChoiceChip(
+                      label: Text(st),
+                      selected: isSelected,
+                      onSelected: (_) => setState(() => _domainStatusFilter = st),
+                      selectedColor: isDark ? AppColors.primaryLight : const Color(0xFF4F46E5),
+                      labelStyle: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: isSelected
+                              ? Colors.transparent
+                              : (isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                    );
+                  }),
+
+                  // Registrar dropdown
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.surfaceDark : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _domainRegistrarFilter != 'All'
+                            ? const Color(0xFF4F46E5)
+                            : (isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                      ),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: registrarOptions.contains(_domainRegistrarFilter) ? _domainRegistrarFilter : 'All',
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                        dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        items: registrarOptions.map((r) {
+                          return DropdownMenuItem<String>(
+                            value: r,
+                            child: Text(r == 'All' ? 'All Registrars' : r.toUpperCase()),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _domainRegistrarFilter = val);
+                        },
+                      ),
+                    ),
+                  ),
+
+                  // Duration dropdown
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.surfaceDark : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _domainDurationFilter != 'All'
+                            ? const Color(0xFF4F46E5)
+                            : (isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+                      ),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: durationOptions.contains(_domainDurationFilter) ? _domainDurationFilter : 'All',
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                        dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        items: durationOptions.map((d) {
+                          return DropdownMenuItem<String>(
+                            value: d,
+                            child: Text(d == 'All' ? 'All Durations' : d),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _domainDurationFilter = val);
+                        },
+                      ),
+                    ),
+                  ),
+
+                  // Reset filters button
+                  if (hasActiveFilter)
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _domainSearchCtrl.clear();
+                          _domainRegistrarFilter = 'All';
+                          _domainStatusFilter = 'All';
+                          _domainDurationFilter = 'All';
+                        });
+                      },
+                      icon: const Icon(Icons.clear_all_rounded, size: 16),
+                      label: const Text('Reset Filters', style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFEF4444),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Domain Cards Grid
+        if (filteredDomains.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(40),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.cardDark : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.language_rounded, size: 48, color: Color(0xFF94A3B8)),
+                const SizedBox(height: 16),
+                Text(
+                  hasActiveFilter ? 'No Domains Match Filter' : 'No Domains Configured Yet',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  hasActiveFilter
+                      ? 'Try adjusting your search query or registrar filter.'
+                      : 'Configure your first domain using the Add Domain form.',
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 16),
+                if (hasActiveFilter)
+                  OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _domainSearchCtrl.clear();
+                        _domainRegistrarFilter = 'All';
+                        _domainStatusFilter = 'All';
+                        _domainDurationFilter = 'All';
+                      });
+                    },
+                    child: const Text('Clear All Filters'),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: () => setState(() => _selectedTabIndex = 0),
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add Domain Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4F46E5),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+              ],
+            ),
+          )
+        else
           LayoutBuilder(
             builder: (context, constraints) {
               final double cardWidth = constraints.maxWidth > 700
@@ -829,7 +1401,7 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
               return Wrap(
                 spacing: 16,
                 runSpacing: 16,
-                children: domains.map((domain) {
+                children: filteredDomains.map((domain) {
                   return SizedBox(
                     width: cardWidth,
                     child: _buildDomainCard(domain, isDark),
@@ -975,8 +1547,10 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
           crossAxisAlignment: WrapCrossAlignment.center,
           runSpacing: 16,
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -990,7 +1564,6 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                     size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
                 Text(
                   'Configured Subdomains',
                   style: TextStyle(
@@ -999,28 +1572,40 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                     color: isDark ? Colors.white : const Color(0xFF0F172A),
                   ),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Text(
+                    '${subdomains.length} Subdomains',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
               ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
-                ),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Text(
-                '${subdomains.length} Subdomains',
-                style: TextStyle(
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedTabIndex = 3),
+              icon: const Icon(Icons.tune_rounded, size: 16, color: Color(0xFF4F46E5)),
+              label: Text(
+                'View All & Filter (${subdomains.length}) →',
+                style: const TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4F46E5),
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         if (subdomains.isEmpty)
           Container(
@@ -1036,6 +1621,297 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
             child: const Text('No subdomains configured yet.'),
           )
         else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final double cardWidth = constraints.maxWidth > 700
+                      ? (constraints.maxWidth - 16) / 2
+                      : constraints.maxWidth;
+                  final previewList = subdomains.take(2).toList();
+                  return Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: previewList.map((subdomain) {
+                      return SizedBox(
+                        width: cardWidth,
+                        child: _buildSubdomainCard(subdomain, domains, isDark),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              if (subdomains.length > 2) ...[
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () => setState(() => _selectedTabIndex = 3),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 16, color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Showing 2 of ${subdomains.length} configured subdomains. Switch to "Configured Subdomains" tab to search and manage all.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : const Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Open Tab →',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF4F46E5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        const SizedBox(height: 48),
+      ],
+    );
+  }
+
+  // --- Dedicated Configured Subdomains Tab ---
+  Widget _buildConfiguredSubdomainsTab(
+    BuildContext context,
+    bool isDark,
+    bool isMobile,
+    List<DomainModel> domains,
+    List<SubdomainModel> subdomains,
+    DomainState domainState,
+  ) {
+    final query = _subdomainSearchCtrl.text.trim().toLowerCase();
+    final filteredSubdomains = subdomains.where((subdomain) {
+      if (query.isNotEmpty) {
+        final matchesQuery = subdomain.targetSubdomain.toLowerCase().contains(query) ||
+            subdomain.primaryDomainName.toLowerCase().contains(query) ||
+            subdomain.domainName.toLowerCase().contains(query);
+        if (!matchesQuery) return false;
+      }
+      return true;
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.link_rounded,
+                        color: Color(0xFF4F46E5),
+                        size: 20,
+                      ),
+                    ),
+                    Text(
+                      'Configured Subdomains',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isDark ? AppColors.borderDark : const Color(0xFFC7D2FE),
+                        ),
+                      ),
+                      child: Text(
+                        '${filteredSubdomains.length} of ${subdomains.length} Subdomains',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : const Color(0xFF4F46E5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Search and manage routing targets and primary domains.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+            ElevatedButton.icon(
+              onPressed: () => setState(() => _selectedTabIndex = 2),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Subdomain'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4F46E5),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Search card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.surfaceDark : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: Color(0xFF94A3B8),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _subdomainSearchCtrl,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'Search subdomain prefix or target domain...',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                if (_subdomainSearchCtrl.text.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      _subdomainSearchCtrl.clear();
+                      setState(() {});
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        if (filteredSubdomains.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(40),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.cardDark : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.link_off_rounded, size: 48, color: Color(0xFF94A3B8)),
+                const SizedBox(height: 16),
+                Text(
+                  query.isNotEmpty ? 'No Subdomains Match Search' : 'No Subdomains Configured Yet',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  query.isNotEmpty
+                      ? 'Try adjusting your search terms.'
+                      : 'Configure your first subdomain using the Add Subdomain form.',
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 16),
+                if (query.isNotEmpty)
+                  OutlinedButton(
+                    onPressed: () {
+                      _subdomainSearchCtrl.clear();
+                      setState(() {});
+                    },
+                    child: const Text('Clear Search'),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: () => setState(() => _selectedTabIndex = 2),
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add Subdomain Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4F46E5),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+              ],
+            ),
+          )
+        else
           LayoutBuilder(
             builder: (context, constraints) {
               final double cardWidth = constraints.maxWidth > 700
@@ -1044,7 +1920,7 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
               return Wrap(
                 spacing: 16,
                 runSpacing: 16,
-                children: subdomains.map((subdomain) {
+                children: filteredSubdomains.map((subdomain) {
                   return SizedBox(
                     width: cardWidth,
                     child: _buildSubdomainCard(subdomain, domains, isDark),
